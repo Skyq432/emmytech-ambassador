@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,9 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Link2, Check, AlertTriangle, Loader2 } from 'lucide-react';
 
 export default function InviteRegisterPage() {
-  const searchParams = useSearchParams();
-  const code = searchParams.get('code');
-
+  const [code, setCode] = useState<string | null>(null);
+  const [codeLoaded, setCodeLoaded] = useState(false);
   const [validating, setValidating] = useState(true);
   const [valid, setValid] = useState(false);
   const [inviteData, setInviteData] = useState<any>(null);
@@ -27,11 +25,20 @@ export default function InviteRegisterPage() {
   const supabase = createClient();
 
   useEffect(() => {
-    validateCode();
-  }, [code]);
+    const params = new URLSearchParams(window.location.search);
+    const codeParam = params.get('code');
 
-  const validateCode = async () => {
-    if (!code) {
+    setCode(codeParam);
+    setCodeLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!codeLoaded) return;
+    validateCode(code);
+  }, [codeLoaded, code]);
+
+  const validateCode = async (codeToValidate: string | null) => {
+    if (!codeToValidate) {
       setError('No invite code provided');
       setValidating(false);
       return;
@@ -41,7 +48,7 @@ export default function InviteRegisterPage() {
       const { data, error } = await supabase
         .from('invite_links')
         .select('*')
-        .eq('code', code)
+        .eq('code', codeToValidate)
         .eq('status', 'active')
         .single();
 
