@@ -7,28 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Trophy, Medal, Award, TrendingUp, Users } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 
-interface Ambassador {
-  id: string;
-  user_id: string;
-  ambassador_tag: string;
-  referral_code: string;
-  whatsapp_number: string | null;
-  whatsapp_link: string | null;
-  bio: string | null;
-  social_links: any | null;
-  total_points: number;
-  total_leads: number | null;
-  total_conversions: number | null;
-  status: string;
-  created_at: string;
-}
-
 interface LeaderboardEntry {
   rank: number;
-  user_id: string;
+  ambassador_id: string;
   full_name: string;
-  ambassador_tag: string;
   total_points: number;
+  total_posts: number;
   total_leads: number;
   total_conversions: number;
 }
@@ -43,35 +27,28 @@ export default function LeaderboardPage() {
     async function fetchLeaderboard() {
       try {
         const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Not authenticated');
 
-        // Get current session instead of getUser to avoid RLS recursion
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) throw new Error('Not authenticated');
-
-        // Fetch from ambassadors table (not a view)
+        // Fetch from the leaderboard view
         const { data, error } = await supabase
-          .from('ambassadors')
-          .select('*, users(name)')
+          .from('leaderboard')
+          .select('*')
           .order('total_points', { ascending: false })
           .limit(50);
 
         if (error) throw error;
 
-        // Build leaderboard entries with user names
-        const ranked = (data || []).map((entry: any, index: number) => ({
+        // Add rank to each entry
+        const ranked = (data || []).map((entry, index) => ({
+          ...entry,
           rank: index + 1,
-          user_id: entry.user_id,
-          full_name: entry.users?.name || entry.ambassador_tag || 'Unknown',
-          ambassador_tag: entry.ambassador_tag,
-          total_points: entry.total_points || 0,
-          total_leads: entry.total_leads || 0,
-          total_conversions: entry.total_conversions || 0,
         }));
 
         setEntries(ranked);
 
         // Find current user's rank
-        const userEntry = ranked.find(e => e.user_id === session.user.id);
+        const userEntry = ranked.find(e => e.ambassador_id === user.id);
         if (userEntry) {
           setMyRank(userEntry);
         }
@@ -103,14 +80,15 @@ export default function LeaderboardPage() {
     }
   };
 
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-  };
+const getInitials = (name: string | null | undefined) => {
+  if (!name) return '??';
+  return name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
+};
 
   if (loading) {
     return (
@@ -162,6 +140,8 @@ export default function LeaderboardPage() {
               <div className="text-right">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <TrendingUp className="h-4 w-4" />
+                  <span>{myRank.total_posts} posts</span>
+                  <span>•</span>
                   <span>{myRank.total_leads} leads</span>
                   <span>•</span>
                   <span>{myRank.total_conversions} conversions</span>
@@ -181,14 +161,13 @@ export default function LeaderboardPage() {
             const heights = ['h-32', 'h-40', 'h-32'];
             const positions = ['2nd', '1st', '3rd'];
             return (
-              <Card key={entry.user_id} className={`${getRankStyle(entry.rank)} ${heights[index]}`}>
+              <Card key={entry.ambassador_id} className={`${getRankStyle(entry.rank)} ${heights[index]}`}>
                 <CardContent className="p-4 text-center h-full flex flex-col justify-between">
                   <div>
                     <div className="h-12 w-12 mx-auto mb-2 rounded-full bg-emmy-primary/10 flex items-center justify-center text-emmy-primary font-bold">
                       {getInitials(entry.full_name)}
                     </div>
                     <p className="font-semibold text-sm truncate">{entry.full_name}</p>
-                    <p className="text-xs text-muted-foreground">{entry.ambassador_tag}</p>
                     <p className="text-xs text-muted-foreground">{positions[index]}</p>
                   </div>
                   <p className="text-lg font-bold">{formatNumber(entry.total_points)} pts</p>
@@ -216,9 +195,9 @@ export default function LeaderboardPage() {
             <div className="divide-y">
               {entries.map((entry) => (
                 <div 
-                  key={entry.user_id} 
+                  key={entry.ambassador_id} 
                   className={`flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors ${
-                    entry.user_id === myRank?.user_id ? 'bg-emmy-primary/5' : ''
+                    entry.ambassador_id === myRank?.ambassador_id ? 'bg-emmy-primary/5' : ''
                   }`}
                 >
                   <div className="w-12 flex justify-center">
@@ -231,8 +210,8 @@ export default function LeaderboardPage() {
 
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{entry.full_name}</p>
-                    <p className="text-xs text-muted-foreground">{entry.ambassador_tag}</p>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{entry.total_posts} posts</span>
                       <span>{entry.total_leads} leads</span>
                       <span>{entry.total_conversions} conversions</span>
                     </div>
