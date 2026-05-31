@@ -22,8 +22,6 @@ export default function InviteRegisterPage() {
   const [registering, setRegistering] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const supabase = createClient();
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const codeParam = params.get('code');
@@ -45,6 +43,7 @@ export default function InviteRegisterPage() {
     }
 
     try {
+      const supabase = createClient();
       const { data, error } = await supabase
         .from('invite_links')
         .select('*')
@@ -85,6 +84,7 @@ export default function InviteRegisterPage() {
     setError(null);
 
     try {
+      const supabase = createClient();
       // Sign up with invite code in metadata
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,

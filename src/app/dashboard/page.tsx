@@ -30,13 +30,14 @@ export default function AmbassadorDashboard() {
   const [ambassador, setAmbassador] = useState<AmbassadorData | null>(null);
   const [actualLeads, setActualLeads] = useState(0);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
+    const supabase = createClient();
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
