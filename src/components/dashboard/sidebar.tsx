@@ -25,8 +25,8 @@ const ambassadorNav = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'My Leads', href: '/dashboard/leads', icon: MessageCircle },
   { label: 'Activity', href: '/dashboard/activity', icon: Activity },
-  { label: 'Leaderboard', href: '/dashboard/leaderboard', icon: Trophy },
-  { label: 'Payouts', href: '/dashboard/payouts', icon: DollarSign },
+  //{ label: 'Leaderboard', href: '/dashboard/leaderboard', icon: Trophy },
+  //{ label: 'Payouts', href: '/dashboard/payouts', icon: DollarSign },
   { label: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
