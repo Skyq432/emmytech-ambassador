@@ -16,9 +16,9 @@ const adminNav = [
   { label: 'Activities', href: '/admin/activities', icon: Activity },
   { label: 'Leads', href: '/admin/leads', icon: MessageCircle },
   { label: 'Conversions', href: '/admin/conversions', icon: BarChart3 },
-  { label: 'Payouts', href: '/admin/payouts', icon: DollarSign },
+  //{ label: 'Payouts', href: '/admin/payouts', icon: DollarSign },
   { label: 'Invite', href: '/admin/invite', icon: Link2 },
-  { label: 'Leaderboard', href: '/admin/leaderboard', icon: Trophy },
+  //{ label: 'Leaderboard', href: '/admin/leaderboard', icon: Trophy },
 ];
 
 const ambassadorNav = [
@@ -47,6 +47,17 @@ export function DashboardSidebar({ role = 'ambassador', user }: DashboardSidebar
     await supabase.auth.signOut();
     window.location.href = '/auth/login';
   };
+
+  // FIXED: Only highlight exact match for root routes, sub-match for nested
+  function isActive(href: string): boolean {
+    if (pathname === href) return true;
+    // For non-root routes, allow sub-path matching
+    // For root routes (/admin, /dashboard), only exact match
+    if (href !== '/admin' && href !== '/dashboard') {
+      return pathname.startsWith(href + '/');
+    }
+    return false;
+  }
 
   return (
     <aside
@@ -86,19 +97,19 @@ export function DashboardSidebar({ role = 'ambassador', user }: DashboardSidebar
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+          const active = isActive(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
-                isActive
+                active
                   ? 'bg-emmy-primary text-white shadow-md shadow-emmy-primary/20'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
               title={collapsed ? item.label : undefined}
             >
-              <Icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+              <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-white' : 'text-slate-400'}`} />
               {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
             </Link>
           );
