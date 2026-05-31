@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +35,7 @@ interface LeaderboardEntry {
 }
 
 export default function LeaderboardPage() {
+  const router = useRouter();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [myRank, setMyRank] = useState<LeaderboardEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,9 +46,12 @@ export default function LeaderboardPage() {
       try {
         const supabase = createClient();
 
-        // Get current session instead of getUser to avoid RLS recursion
+        // Check if user is logged in first
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) throw new Error('Not authenticated');
+        if (!session?.user) {
+          router.push('/auth/login');
+          return;
+        }
 
         // Fetch from ambassadors table (not a view)
         const { data, error } = await supabase
@@ -83,7 +88,7 @@ export default function LeaderboardPage() {
     }
 
     fetchLeaderboard();
-  }, []);
+  }, [router]);
 
   const getRankIcon = (rank: number) => {
     switch (rank) {

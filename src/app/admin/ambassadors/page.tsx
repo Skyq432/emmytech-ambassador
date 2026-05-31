@@ -1,295 +1,207 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Users, Search, Plus, Edit, Trash2, 
-  CheckCircle, XCircle, Hash, Link2, Clock, ArrowLeft, ChevronRight
+import { Badge } from '@/components/ui/badge';
+import {
+  Search, Eye, DollarSign, UserPlus,
+  TrendingUp, Users, Award, ChevronRight
 } from 'lucide-react';
+import { formatCurrency, formatNumber } from '@/lib/utils';
 import Link from 'next/link';
-import { formatDate } from '@/lib/utils';
 
 interface Ambassador {
   id: string;
   user_id: string;
   name: string;
   email: string;
+  avatar_url: string | null;
   ambassador_tag: string;
-  referral_code: string;
-  whatsapp_number: string | null;
-  whatsapp_link: string | null;
-  status: 'active' | 'pending' | 'suspended';
+  total_points: number;
   total_leads: number;
   total_conversions: number;
-  total_points: number;
+  available_balance: number;
+  total_cashed_out: number;
+  status: string;
   created_at: string;
 }
 
-export default function AmbassadorsPage() {
+type SortField = 'total_points' | 'total_leads' | 'total_conversions' | 'available_balance';
+
+export default function AdminAmbassadorsPage() {
   const [ambassadors, setAmbassadors] = useState<Ambassador[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'active' | 'pending' | 'suspended'>('all');
+  const [sortBy, setSortBy] = useState<SortField>('total_points');
+  const supabase = createClient();
 
   useEffect(() => {
-    async function fetchAmbassadors() {
-      try {
-        const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) throw new Error('Not authenticated');
-
-        const { data, error } = await supabase
-          .from('ambassadors')
-          .select('*, users(name, email)')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        const formatted: Ambassador[] = (data || []).map((a: any) => ({
-          id: a.id,
-          user_id: a.user_id,
-          name: a.users?.name || 'Unknown',
-          email: a.users?.email || '',
-          ambassador_tag: a.ambassador_tag,
-          referral_code: a.referral_code,
-          whatsapp_number: a.whatsapp_number,
-          whatsapp_link: a.whatsapp_link,
-          status: a.status,
-          total_leads: a.total_leads || 0,
-          total_conversions: a.total_conversions || 0,
-          total_points: a.total_points || 0,
-          created_at: a.created_at,
-        }));
-
-        setAmbassadors(formatted);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchAmbassadors();
   }, []);
 
-  const filtered = ambassadors.filter(a => {
-    const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase()) || 
-                         a.email.toLowerCase().includes(search.toLowerCase()) ||
-                         a.ambassador_tag.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = filter === 'all' || a.status === filter;
-    return matchesSearch && matchesFilter;
-  });
+  const fetchAmbassadors = async () => {
+    try {
+      const { data } = await supabase
+        .from('ambassadors')
+        .select('*, users(name, email, avatar_url)')
+        .order('total_points', { ascending: false });
 
-  const totalActive = ambassadors.filter(a => a.status === 'active').length;
-  const totalPending = ambassadors.filter(a => a.status === 'pending').length;
-  const totalSuspended = ambassadors.filter(a => a.status === 'suspended').length;
+      setAmbassadors(
+        (data || []).map((a: any) => ({
+          ...a,
+          name: a.users?.name || 'Unknown',
+          email: a.users?.email || '',
+          avatar_url: a.users?.avatar_url,
+        }))
+      );
+    } catch (err) {
+      console.error('Error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filtered = ambassadors
+    .filter((a) =>
+      a.name.toLowerCase().includes(search.toLowerCase()) ||
+      a.ambassador_tag.toLowerCase().includes(search.toLowerCase()) ||
+      a.email.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0));
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="h-8 w-64 bg-slate-200/50 rounded animate-pulse" />
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-24 bg-slate-200/50 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 border border-red-200/50 bg-red-50/50 rounded-xl">
-        <p className="text-red-600">Error: {error}</p>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emmy-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-4">
-        <Link href="/admin">
-          <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-900">
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            Back
+    <div className="space-y-6">
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Ambassadors</h1>
+          <p className="text-muted-foreground">Manage and track all ambassadors</p>
+        </div>
+        <Link href="/admin/invite">
+          <Button className="gap-2">
+            <UserPlus className="h-4 w-4" />
+            Invite New
           </Button>
         </Link>
-        <div className="h-6 w-px bg-slate-200" />
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <span>Admin</span>
-          <ChevronRight className="w-4 h-4" />
-          <span className="text-slate-900 font-medium">Ambassadors</span>
-        </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Ambassadors</h1>
-          <p className="text-slate-500 mt-1">Manage all ambassador accounts</p>
-        </div>
-        <Button className="bg-slate-900 hover:bg-slate-800 text-white">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Ambassador
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center">
-                <Users className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{ambassadors.length}</p>
-                <p className="text-sm text-slate-500">Total</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{totalActive}</p>
-                <p className="text-sm text-slate-500">Active</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center">
-                <Clock className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{totalPending}</p>
-                <p className="text-sm text-slate-500">Pending</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center">
-                <XCircle className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{totalSuspended}</p>
-                <p className="text-sm text-slate-500">Suspended</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search ambassadors..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 border-slate-200"
+            placeholder="Search ambassadors..."
+            className="pl-9"
           />
         </div>
         <div className="flex gap-2">
-          {(['all', 'active', 'pending', 'suspended'] as const).map((f) => (
-            <Button
-              key={f}
-              variant={filter === f ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilter(f)}
-              className={filter === f ? 'bg-slate-900 text-white border-0' : 'border-slate-200'}
+          {([
+            { key: 'total_points' as SortField, label: 'Points' },
+            { key: 'total_leads' as SortField, label: 'Leads' },
+            { key: 'total_conversions' as SortField, label: 'Conversions' },
+            { key: 'available_balance' as SortField, label: 'Balance' },
+          ]).map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setSortBy(s.key)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                sortBy === s.key
+                  ? 'bg-emmy-primary text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </Button>
+              {s.label}
+            </button>
           ))}
         </div>
       </div>
 
-      <Card className="border border-slate-200 shadow-sm overflow-hidden">
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50">
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Ambassador</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Tag & Code</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Performance</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Status</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Joined</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((a) => (
-                  <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
-                          <span className="font-semibold text-white">{a.name.charAt(0)}</span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-900 text-sm">{a.name}</p>
-                          <p className="text-xs text-slate-500">{a.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs">
-                          <Hash className="w-3 h-3 text-blue-500" />
-                          <span className="text-blue-600 font-medium">{a.ambassador_tag}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-xs">
-                          <Link2 className="w-3 h-3 text-cyan-500" />
-                          <span className="text-cyan-600 font-medium">{a.referral_code}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="space-y-1 text-xs">
-                        <p><span className="text-slate-500">Leads:</span> <span className="font-medium">{a.total_leads}</span></p>
-                        <p><span className="text-slate-500">Conversions:</span> <span className="font-medium">{a.total_conversions}</span></p>
-                        <p><span className="text-slate-500">Points:</span> <span className="font-medium text-blue-600">{a.total_points.toLocaleString()}</span></p>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <Badge className={a.status === 'active' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-0' : a.status === 'pending' ? 'bg-amber-100 text-amber-700 hover:bg-amber-100 border-0' : 'bg-red-100 text-red-700 hover:bg-red-100 border-0'}>
-                        {a.status}
-                      </Badge>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="text-sm text-slate-500">{formatDate(a.created_at)}</span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Ambassador Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filtered.map((amb) => (
+          <Card
+            key={amb.id}
+            className="group hover:shadow-lg hover:shadow-emmy-primary/5 transition-all duration-300 border-slate-200/60"
+          >
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-full bg-emmy-primary text-white flex items-center justify-center text-sm font-bold border-2 border-slate-100 overflow-hidden">
+                    {amb.avatar_url ? (
+                      <img src={amb.avatar_url} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      amb.name[0]?.toUpperCase() || 'U'
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">{amb.name}</p>
+                    <p className="text-xs text-muted-foreground">{amb.ambassador_tag}</p>
+                  </div>
+                </div>
+                <Badge variant={amb.status === 'active' ? 'default' : 'secondary'}>
+                  {amb.status}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className="p-2.5 rounded-lg bg-slate-50">
+                  <div className="flex items-center gap-1.5">
+                    <Award className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="text-xs text-muted-foreground">Points</span>
+                  </div>
+                  <p className="font-bold text-sm mt-0.5">{formatNumber(amb.total_points)}</p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-50">
+                  <div className="flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5 text-blue-500" />
+                    <span className="text-xs text-muted-foreground">Leads</span>
+                  </div>
+                  <p className="font-bold text-sm mt-0.5">{amb.total_leads}</p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-50">
+                  <div className="flex items-center gap-1.5">
+                    <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs text-muted-foreground">Conversions</span>
+                  </div>
+                  <p className="font-bold text-sm mt-0.5">{amb.total_conversions}</p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-50">
+                  <div className="flex items-center gap-1.5">
+                    <DollarSign className="h-3.5 w-3.5 text-violet-500" />
+                    <span className="text-xs text-muted-foreground">Balance</span>
+                  </div>
+                  <p className="font-bold text-sm mt-0.5">{formatCurrency(amb.available_balance)}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-4 pt-3 border-t">
+                <p className="text-xs text-muted-foreground">
+                  Cashed out: {formatCurrency(amb.total_cashed_out)}
+                </p>
+                <Link href={`/admin/ambassadors/${amb.id}`}>
+                  <Button variant="ghost" size="sm" className="gap-1 text-emmy-primary hover:text-emmy-primary hover:bg-emmy-primary/5">
+                    <Eye className="h-3.5 w-3.5" />
+                    View
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
