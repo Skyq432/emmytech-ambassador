@@ -39,7 +39,6 @@
     "postcss": "^8.5.15",
     "tailwindcss": "^4.3.0",
     "typescript": "^5",
-    "wrangler": "^4.95.0",
-    "@netlify/plugin-nextjs": "^6.0.0"
+    "wrangler": "^4.95.0"
   }
 }
