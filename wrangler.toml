@@ -4,11 +4,6 @@ compatibility_date = "2024-12-16"
 
 [build]
 command = "npm run build:cloudflare"
-cwd = "."
-watch_paths = ["src/**/*.{js,ts,jsx,tsx}"]
 
 [build.upload]
 format = "modules"
-
-[env.production]
-routes = [{ pattern = "emmytech-ambassador.pages.dev", zone_name = "pages.dev" }]
