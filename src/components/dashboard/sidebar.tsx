@@ -69,8 +69,8 @@ export function DashboardSidebar({ role = 'ambassador', user }: DashboardSidebar
       <div className="flex items-center justify-between p-4 border-b">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-emmy-primary flex items-center justify-center">
-              <span className="text-white font-bold text-sm">E</span>
+            <div className="h-8 w-8">
+              <img src="/emmy-logo.svg" alt="EmmyTech" className="h-8 w-8 object-contain" />
             </div>
             <span className="font-bold text-slate-900">EmmyTech</span>
           </div>
