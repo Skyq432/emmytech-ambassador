@@ -32,6 +32,13 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // If an unauthenticated user visits the root path, send them to login
+  if (request.nextUrl.pathname === '/') {
+    if (!user) {
+      return NextResponse.redirect(new URL('/auth/login', request.url));
+    }
+  }
+
   return supabaseResponse;
 }
 
