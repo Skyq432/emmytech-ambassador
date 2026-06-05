@@ -9,8 +9,19 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ArrowLeft, User, Trophy, Users, TrendingUp, MessageCircle,
-  DollarSign, Phone, Link2, Globe, Calendar, Plus, Send,
+  ArrowLeft,
+  User,
+  Users,
+  TrendingUp,
+  DollarSign,
+  Plus,
+  Send,
+  PauseCircle,
+  PlayCircle,
+  Trash2,
+  Award,
+  Shield,
+  Activity,
 } from 'lucide-react';
 import { formatDate, formatCurrency, formatNumber } from '@/lib/utils';
 
@@ -45,7 +56,7 @@ interface Lead {
   created_at: string;
 }
 
-interface Activity {
+interface PostActivity {
   id: string;
   platform: string;
   post_url: string;
@@ -74,16 +85,20 @@ export default function AmbassadorDetailPage() {
   const params = useParams();
   const router = useRouter();
   const ambassadorId = params.id as string;
+  const supabase = createClient();
 
   const [ambassador, setAmbassador] = useState<AmbassadorDetail | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activities, setActivities] = useState<PostActivity[]>([]);
   const [conversions, setConversions] = useState<Conversion[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'leads' | 'activity' | 'conversions' | 'payouts'>('overview');
+  const [actionLoading, setActionLoading] = useState(false);
 
-  // Add lead form
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'leads' | 'activity' | 'conversions' | 'payouts'
+  >('overview');
+
   const [showAddLead, setShowAddLead] = useState(false);
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
@@ -91,20 +106,16 @@ export default function AmbassadorDetailPage() {
   const [leadNotes, setLeadNotes] = useState('');
   const [addingLead, setAddingLead] = useState(false);
 
-  // Add conversion form
   const [showAddConversion, setShowAddConversion] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [conversionAmount, setConversionAmount] = useState('');
   const [addingConversion, setAddingConversion] = useState(false);
 
-  // Payout form
   const [showPayout, setShowPayout] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState('');
   const [payoutPoints, setPayoutPoints] = useState('');
   const [payoutNotes, setPayoutNotes] = useState('');
   const [processingPayout, setProcessingPayout] = useState(false);
-
-  const supabase = createClient();
 
   useEffect(() => {
     if (ambassadorId) fetchData();
@@ -112,7 +123,6 @@ export default function AmbassadorDetailPage() {
 
   const fetchData = async () => {
     try {
-      // Fetch ambassador with user data
       const { data: ambData } = await supabase
         .from('ambassadors')
         .select('*, users(name, email, avatar_url, created_at)')
@@ -129,36 +139,36 @@ export default function AmbassadorDetailPage() {
         });
       }
 
-      // Fetch leads
       const { data: leadsData } = await supabase
         .from('leads')
         .select('*')
         .eq('ambassador_id', ambassadorId)
         .order('created_at', { ascending: false });
+
       setLeads(leadsData || []);
 
-      // Fetch activities
       const { data: actData } = await supabase
         .from('activities')
         .select('*')
         .eq('ambassador_id', ambassadorId)
         .order('submitted_at', { ascending: false });
+
       setActivities(actData || []);
 
-      // Fetch conversions
       const { data: convData } = await supabase
         .from('conversions')
         .select('*')
         .eq('ambassador_id', ambassadorId)
         .order('approved_at', { ascending: false });
+
       setConversions(convData || []);
 
-      // Fetch payouts
       const { data: payData } = await supabase
         .from('payouts')
         .select('*')
         .eq('ambassador_id', ambassadorId)
         .order('created_at', { ascending: false });
+
       setPayouts(payData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -167,15 +177,55 @@ export default function AmbassadorDetailPage() {
     }
   };
 
+  const updateAmbassadorStatus = async (
+    newStatus: 'active' | 'suspended' | 'deleted'
+  ) => {
+    if (!ambassador) return;
+
+    const confirmed = window.confirm(
+      newStatus === 'deleted'
+        ? 'Are you sure you want to delete this ambassador?'
+        : newStatus === 'suspended'
+          ? 'Are you sure you want to pause this ambassador?'
+          : 'Are you sure you want to reactivate this ambassador?'
+    );
+
+    if (!confirmed) return;
+
+    setActionLoading(true);
+
+    const { error } = await supabase
+      .from('ambassadors')
+      .update({ status: newStatus })
+      .eq('id', ambassador.id);
+
+    if (error) {
+      alert(error.message);
+      setActionLoading(false);
+      return;
+    }
+
+    if (newStatus === 'deleted') {
+      router.push('/admin/ambassadors');
+      return;
+    }
+
+    await fetchData();
+    setActionLoading(false);
+  };
+
   const handleAddLead = async () => {
     if (!leadName || !leadPhone) return;
     setAddingLead(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session?.user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase.rpc('admin_create_lead', {
+      const { error } = await supabase.rpc('admin_create_lead', {
         p_admin_id: session.user.id,
         p_ambassador_id: ambassadorId,
         p_customer_name: leadName,
@@ -205,10 +255,13 @@ export default function AmbassadorDetailPage() {
     setAddingConversion(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session?.user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase.rpc('admin_create_conversion', {
+      const { error } = await supabase.rpc('admin_create_conversion', {
         p_admin_id: session.user.id,
         p_lead_id: selectedLeadId,
         p_amount: parseFloat(conversionAmount),
@@ -232,10 +285,13 @@ export default function AmbassadorDetailPage() {
     setProcessingPayout(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session?.user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase.rpc('process_payout', {
+      const { error } = await supabase.rpc('process_payout', {
         p_admin_id: session.user.id,
         p_ambassador_id: ambassadorId,
         p_points_paid: parseInt(payoutPoints),
@@ -259,94 +315,105 @@ export default function AmbassadorDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emmy-primary"></div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-emmy-primary" />
       </div>
     );
   }
 
   if (!ambassador) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-slate-500">Ambassador not found</p>
-      </div>
-    );
+    return <p className="py-12 text-center text-slate-500">Ambassador not found</p>;
   }
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: User },
     { key: 'leads', label: `Leads (${leads.length})`, icon: Users },
-    { key: 'activity', label: `Activity (${activities.length})`, icon: TrendingUp },
-    { key: 'conversions', label: `Conversions (${conversions.length})`, icon: DollarSign },
+    { key: 'activity', label: `Activity (${activities.length})`, icon: Activity },
+    { key: 'conversions', label: `Conversions (${conversions.length})`, icon: TrendingUp },
     { key: 'payouts', label: `Payouts (${payouts.length})`, icon: Send },
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/admin/ambassadors')}>
+    <div className="space-y-8">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-950 via-emmy-primary to-blue-700 p-8 text-white shadow-xl">
+        <div className="absolute right-0 top-0 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute bottom-0 left-1/2 h-40 w-40 rounded-full bg-yellow-400/20 blur-2xl" />
+
+        <button
+          onClick={() => router.push('/admin/ambassadors')}
+          className="relative mb-8 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur hover:bg-white/20"
+        >
           <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{ambassador.name}</h1>
-          <p className="text-muted-foreground">{ambassador.ambassador_tag}</p>
+          Back to ambassadors
+        </button>
+
+        <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div className="flex items-center gap-5">
+            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border border-white/20 bg-white/15 text-4xl font-bold shadow-lg">
+              {ambassador.avatar_url ? (
+                <img src={ambassador.avatar_url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                ambassador.name[0]?.toUpperCase() || 'U'
+              )}
+            </div>
+
+            <div>
+              <div className="mb-3 flex items-center gap-3">
+                <h1 className="text-4xl font-bold tracking-tight">{ambassador.name}</h1>
+                <span className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">
+                  {ambassador.status}
+                </span>
+              </div>
+
+              <p className="text-lg text-blue-100">{ambassador.ambassador_tag}</p>
+              <p className="mt-1 text-sm text-blue-100">{ambassador.email}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+              <p className="text-sm text-blue-100">Points</p>
+              <p className="text-2xl font-bold">{formatNumber(ambassador.total_points)}</p>
+            </div>
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+              <p className="text-sm text-blue-100">Leads</p>
+              <p className="text-2xl font-bold">{ambassador.total_leads}</p>
+            </div>
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+              <p className="text-sm text-blue-100">Conversions</p>
+              <p className="text-2xl font-bold">{ambassador.total_conversions}</p>
+            </div>
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+              <p className="text-sm text-blue-100">Balance</p>
+              <p className="text-2xl font-bold">{formatCurrency(ambassador.available_balance)}</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Points</p>
-            <p className="text-2xl font-bold">{formatNumber(ambassador.total_points)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Leads</p>
-            <p className="text-2xl font-bold">{ambassador.total_leads}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Conversions</p>
-            <p className="text-2xl font-bold">{ambassador.total_conversions}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground">Balance</p>
-            <p className="text-2xl font-bold">{formatCurrency(ambassador.available_balance)}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="flex gap-2 flex-wrap">
-        <Button onClick={() => setShowAddLead(true)} className="gap-2">
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={() => setShowAddLead(true)} className="gap-2 rounded-xl">
           <Plus className="h-4 w-4" /> Add Lead
         </Button>
-        <Button onClick={() => setShowAddConversion(true)} variant="outline" className="gap-2">
+        <Button onClick={() => setShowAddConversion(true)} variant="outline" className="gap-2 rounded-xl">
           <Plus className="h-4 w-4" /> Add Conversion
         </Button>
-        <Button onClick={() => setShowPayout(true)} variant="outline" className="gap-2">
+        <Button onClick={() => setShowPayout(true)} variant="outline" className="gap-2 rounded-xl">
           <Send className="h-4 w-4" /> Send Payout
         </Button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b">
+      <div className="flex gap-2 overflow-x-auto rounded-2xl bg-white p-2 shadow-sm">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
                 activeTab === tab.key
-                  ? 'border-emmy-primary text-emmy-primary'
-                  : 'border-transparent text-muted-foreground hover:text-slate-700'
+                  ? 'bg-emmy-primary text-white shadow-sm'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -356,257 +423,275 @@ export default function AmbassadorDetailPage() {
         })}
       </div>
 
-      {/* Tab Content */}
       {activeTab === 'overview' && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-medium">{ambassador.email}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Phone</p>
-                  <p className="font-medium">{ambassador.whatsapp_number}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Referral Code</p>
-                  <p className="font-medium">{ambassador.referral_code}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Custom Code</p>
-                  <p className="font-medium">{ambassador.custom_referral_code || 'Not set'}</p>
-                </div>
-              </div>
-              {ambassador.bio && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Bio</p>
-                  <p className="text-sm">{ambassador.bio}</p>
-                </div>
-              )}
-              <div>
-                <p className="text-sm text-muted-foreground">WhatsApp Link</p>
-                <a href={ambassador.whatsapp_link} target="_blank" className="text-sm text-emmy-primary hover:underline">
-                  {ambassador.whatsapp_link}
-                </a>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <Card className="rounded-3xl border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle>Profile Details</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-5 md:grid-cols-2">
+                <Info label="Email" value={ambassador.email} />
+                <Info label="Phone" value={ambassador.whatsapp_number} />
+                <Info label="Referral Code" value={ambassador.referral_code} />
+                <Info label="Custom Code" value={ambassador.custom_referral_code || 'Not set'} />
+                <Info label="Joined" value={formatDate(ambassador.created_at)} />
+                <Info label="Status" value={ambassador.status} />
+              </CardContent>
+            </Card>
 
-          <Card>
+            <Card className="rounded-3xl border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle>Financial Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-3">
+                <Summary icon={DollarSign} label="Available" value={formatCurrency(ambassador.available_balance)} />
+                <Summary icon={Send} label="Cashed Out" value={formatCurrency(ambassador.total_cashed_out)} />
+                <Summary icon={Award} label="Total Points" value={formatNumber(ambassador.total_points)} />
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="rounded-3xl border-0 shadow-sm">
             <CardHeader>
-              <CardTitle>Financial Summary</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-emmy-primary" />
+                Admin Controls
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-slate-50 rounded-lg">
-                  <p className="text-2xl font-bold">{formatCurrency(ambassador.available_balance)}</p>
-                  <p className="text-sm text-muted-foreground">Available</p>
-                </div>
-                <div className="text-center p-4 bg-slate-50 rounded-lg">
-                  <p className="text-2xl font-bold">{formatCurrency(ambassador.total_cashed_out)}</p>
-                  <p className="text-sm text-muted-foreground">Total Cashed Out</p>
-                </div>
-                <div className="text-center p-4 bg-slate-50 rounded-lg">
-                  <p className="text-2xl font-bold">{formatNumber(ambassador.total_points)}</p>
-                  <p className="text-sm text-muted-foreground">Total Points</p>
+
+            <CardContent className="space-y-5">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Current Status</p>
+                <div className="mt-2 flex items-center justify-between">
+                  <p className="text-lg font-bold capitalize">{ambassador.status}</p>
+                  <Badge variant={ambassador.status === 'active' ? 'default' : 'secondary'}>
+                    {ambassador.status}
+                  </Badge>
                 </div>
               </div>
+
+              {ambassador.status === 'active' ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={actionLoading}
+                  onClick={() => updateAmbassadorStatus('suspended')}
+                  className="w-full gap-2 rounded-xl"
+                >
+                  <PauseCircle className="h-4 w-4" />
+                  Pause Ambassador
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={actionLoading}
+                  onClick={() => updateAmbassadorStatus('active')}
+                  className="w-full gap-2 rounded-xl"
+                >
+                  <PlayCircle className="h-4 w-4" />
+                  Reactivate Ambassador
+                </Button>
+              )}
+
+              <Button
+                type="button"
+                variant="danger"
+                disabled={actionLoading}
+                onClick={() => updateAmbassadorStatus('deleted')}
+                className="w-full gap-2 rounded-xl"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Ambassador
+              </Button>
             </CardContent>
           </Card>
         </div>
       )}
 
       {activeTab === 'leads' && (
-        <div className="space-y-4">
-          {leads.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No leads yet</p>
-          ) : (
-            leads.map((lead) => (
-              <Card key={lead.id}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{lead.customer_name}</p>
-                    <p className="text-sm text-muted-foreground">{lead.customer_phone}</p>
-                    {lead.customer_email && <p className="text-sm text-muted-foreground">{lead.customer_email}</p>}
-                  </div>
-                  <Badge variant={lead.status === 'converted' ? 'default' : 'secondary'}>{lead.status}</Badge>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+        <List empty="No leads yet">
+          {leads.map((lead) => (
+            <Row key={lead.id} title={lead.customer_name} subtitle={lead.customer_phone} badge={lead.status} />
+          ))}
+        </List>
       )}
 
       {activeTab === 'activity' && (
-        <div className="space-y-4">
-          {activities.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No activity yet</p>
-          ) : (
-            activities.map((act) => (
-              <Card key={act.id}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{act.platform}</p>
-                    <p className="text-sm text-muted-foreground">{act.post_url}</p>
-                  </div>
-                  <div className="text-right">
-                    <Badge variant={act.status === 'approved' ? 'default' : 'secondary'}>{act.status}</Badge>
-                    {act.points_awarded > 0 && <p className="text-sm text-emmy-secondary mt-1">+{act.points_awarded} pts</p>}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+        <List empty="No activity yet">
+          {activities.map((act) => (
+            <Row key={act.id} title={act.platform} subtitle={act.post_url} badge={act.status} />
+          ))}
+        </List>
       )}
 
       {activeTab === 'conversions' && (
-        <div className="space-y-4">
-          {conversions.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No conversions yet</p>
-          ) : (
-            conversions.map((conv) => (
-              <Card key={conv.id}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{formatCurrency(conv.amount)}</p>
-                    <p className="text-sm text-muted-foreground">Commission: {formatCurrency(conv.commission_amount)}</p>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{formatDate(conv.approved_at)}</p>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+        <List empty="No conversions yet">
+          {conversions.map((conv) => (
+            <Row
+              key={conv.id}
+              title={formatCurrency(conv.amount)}
+              subtitle={`Commission: ${formatCurrency(conv.commission_amount)}`}
+              badge={formatDate(conv.approved_at)}
+            />
+          ))}
+        </List>
       )}
 
       {activeTab === 'payouts' && (
-        <div className="space-y-4">
-          {payouts.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No payouts yet</p>
-          ) : (
-            payouts.map((pay) => (
-              <Card key={pay.id}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{formatCurrency(pay.amount)}</p>
-                    <p className="text-sm text-muted-foreground">{pay.points_paid} points paid</p>
-                    {pay.notes && <p className="text-sm text-muted-foreground">{pay.notes}</p>}
-                  </div>
-                  <div className="text-right">
-                    <Badge variant={pay.status === 'paid' ? 'default' : 'secondary'}>{pay.status}</Badge>
-                    <p className="text-sm text-muted-foreground">{formatDate(pay.paid_at)}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+        <List empty="No payouts yet">
+          {payouts.map((pay) => (
+            <Row
+              key={pay.id}
+              title={formatCurrency(pay.amount)}
+              subtitle={`${pay.points_paid} points paid`}
+              badge={pay.status}
+            />
+          ))}
+        </List>
       )}
 
-      {/* Add Lead Modal */}
       {showAddLead && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
-            <CardHeader>
-              <CardTitle>Add Lead</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Input placeholder="Customer Name" value={leadName} onChange={(e) => setLeadName(e.target.value)} />
-              <Input placeholder="Phone Number" value={leadPhone} onChange={(e) => setLeadPhone(e.target.value)} />
-              <Input placeholder="Email (optional)" value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)} />
-              <Textarea placeholder="Notes (optional)" value={leadNotes} onChange={(e) => setLeadNotes(e.target.value)} rows={2} />
-              <div className="flex gap-2">
-                <Button onClick={handleAddLead} disabled={addingLead || !leadName || !leadPhone}>
-                  {addingLead ? 'Adding...' : 'Add Lead'}
-                </Button>
-                <Button variant="ghost" onClick={() => setShowAddLead(false)}>Cancel</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <Modal title="Add Lead">
+          <Input placeholder="Customer Name" value={leadName} onChange={(e) => setLeadName(e.target.value)} />
+          <Input placeholder="Phone Number" value={leadPhone} onChange={(e) => setLeadPhone(e.target.value)} />
+          <Input placeholder="Email optional" value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)} />
+          <Textarea placeholder="Notes optional" value={leadNotes} onChange={(e) => setLeadNotes(e.target.value)} />
+          <div className="flex gap-2">
+            <Button onClick={handleAddLead} disabled={addingLead || !leadName || !leadPhone}>
+              {addingLead ? 'Adding...' : 'Add Lead'}
+            </Button>
+            <Button variant="ghost" onClick={() => setShowAddLead(false)}>Cancel</Button>
+          </div>
+        </Modal>
       )}
 
-      {/* Add Conversion Modal */}
       {showAddConversion && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
-            <CardHeader>
-              <CardTitle>Add Conversion</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <select
-                className="w-full p-2 border rounded-md"
-                value={selectedLeadId}
-                onChange={(e) => setSelectedLeadId(e.target.value)}
-              >
-                <option value="">Select a lead</option>
-                {leads.filter(l => l.status !== 'converted').map((lead) => (
-                  <option key={lead.id} value={lead.id}>{lead.customer_name} - {lead.customer_phone}</option>
-                ))}
-              </select>
-              <Input
-                type="number"
-                placeholder="Sale Amount (₦)"
-                value={conversionAmount}
-                onChange={(e) => setConversionAmount(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <Button onClick={handleAddConversion} disabled={addingConversion || !selectedLeadId || !conversionAmount}>
-                  {addingConversion ? 'Adding...' : 'Add Conversion'}
-                </Button>
-                <Button variant="ghost" onClick={() => setShowAddConversion(false)}>Cancel</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <Modal title="Add Conversion">
+          <select
+            className="w-full rounded-md border p-2"
+            value={selectedLeadId}
+            onChange={(e) => setSelectedLeadId(e.target.value)}
+          >
+            <option value="">Select a lead</option>
+            {leads.filter((l) => l.status !== 'converted').map((lead) => (
+              <option key={lead.id} value={lead.id}>
+                {lead.customer_name} - {lead.customer_phone}
+              </option>
+            ))}
+          </select>
+          <Input type="number" placeholder="Sale Amount" value={conversionAmount} onChange={(e) => setConversionAmount(e.target.value)} />
+          <div className="flex gap-2">
+            <Button onClick={handleAddConversion} disabled={addingConversion || !selectedLeadId || !conversionAmount}>
+              {addingConversion ? 'Adding...' : 'Add Conversion'}
+            </Button>
+            <Button variant="ghost" onClick={() => setShowAddConversion(false)}>Cancel</Button>
+          </div>
+        </Modal>
       )}
 
-      {/* Payout Modal */}
       {showPayout && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
-            <CardHeader>
-              <CardTitle>Send Payout</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-3 bg-slate-50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Available Balance</p>
-                <p className="text-xl font-bold">{formatCurrency(ambassador.available_balance)}</p>
-              </div>
-              <Input
-                type="number"
-                placeholder="Amount (₦)"
-                value={payoutAmount}
-                onChange={(e) => setPayoutAmount(e.target.value)}
-              />
-              <Input
-                type="number"
-                placeholder="Points to Deduct"
-                value={payoutPoints}
-                onChange={(e) => setPayoutPoints(e.target.value)}
-              />
-              <Textarea
-                placeholder="Notes (optional)"
-                value={payoutNotes}
-                onChange={(e) => setPayoutNotes(e.target.value)}
-                rows={2}
-              />
-              <div className="flex gap-2">
-                <Button onClick={handlePayout} disabled={processingPayout || !payoutAmount || !payoutPoints}>
-                  {processingPayout ? 'Processing...' : 'Send Payout'}
-                </Button>
-                <Button variant="ghost" onClick={() => setShowPayout(false)}>Cancel</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <Modal title="Send Payout">
+          <Input type="number" placeholder="Amount" value={payoutAmount} onChange={(e) => setPayoutAmount(e.target.value)} />
+          <Input type="number" placeholder="Points to Deduct" value={payoutPoints} onChange={(e) => setPayoutPoints(e.target.value)} />
+          <Textarea placeholder="Notes optional" value={payoutNotes} onChange={(e) => setPayoutNotes(e.target.value)} />
+          <div className="flex gap-2">
+            <Button onClick={handlePayout} disabled={processingPayout || !payoutAmount || !payoutPoints}>
+              {processingPayout ? 'Processing...' : 'Send Payout'}
+            </Button>
+            <Button variant="ghost" onClick={() => setShowPayout(false)}>Cancel</Button>
+          </div>
+        </Modal>
       )}
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-4">
+      <p className="text-sm text-slate-500">{label}</p>
+      <p className="mt-1 font-semibold text-slate-900 break-words">{value}</p>
+    </div>
+  );
+}
+
+function Summary({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: any;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-5">
+      <Icon className="mb-3 h-5 w-5 text-emmy-primary" />
+      <p className="text-sm text-slate-500">{label}</p>
+      <p className="mt-1 text-xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+function List({
+  children,
+  empty,
+}: {
+  children: React.ReactNode;
+  empty: string;
+}) {
+  const hasChildren = Array.isArray(children) ? children.length > 0 : !!children;
+
+  return (
+    <Card className="rounded-3xl border-0 shadow-sm">
+      <CardContent className="p-0">
+        {hasChildren ? (
+          <div className="divide-y divide-slate-100">{children}</div>
+        ) : (
+          <p className="p-10 text-center text-slate-500">{empty}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Row({
+  title,
+  subtitle,
+  badge,
+}: {
+  title: string;
+  subtitle: string;
+  badge: string;
+}) {
+  return (
+    <div className="flex items-center justify-between p-5 hover:bg-slate-50">
+      <div>
+        <p className="font-semibold text-slate-900">{title}</p>
+        <p className="text-sm text-slate-500 break-all">{subtitle}</p>
+      </div>
+      <Badge variant="secondary">{badge}</Badge>
+    </div>
+  );
+}
+
+function Modal({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <Card className="w-full max-w-md rounded-3xl">
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">{children}</CardContent>
+      </Card>
     </div>
   );
 }

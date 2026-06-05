@@ -7,8 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Search, Eye, DollarSign, UserPlus,
-  TrendingUp, Users, Award, ChevronRight
+  Search,
+  Eye,
+  DollarSign,
+  UserPlus,
+  TrendingUp,
+  Users,
+  Award,
+  ChevronRight,
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import Link from 'next/link';
@@ -29,13 +35,18 @@ interface Ambassador {
   created_at: string;
 }
 
-type SortField = 'total_points' | 'total_leads' | 'total_conversions' | 'available_balance';
+type SortField =
+  | 'total_points'
+  | 'total_leads'
+  | 'total_conversions'
+  | 'available_balance';
 
 export default function AdminAmbassadorsPage() {
   const [ambassadors, setAmbassadors] = useState<Ambassador[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortField>('total_points');
+
   const supabase = createClient();
 
   useEffect(() => {
@@ -44,10 +55,13 @@ export default function AdminAmbassadorsPage() {
 
   const fetchAmbassadors = async () => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('ambassadors')
         .select('*, users(name, email, avatar_url)')
+        .neq('status', 'deleted')
         .order('total_points', { ascending: false });
+
+      if (error) throw error;
 
       setAmbassadors(
         (data || []).map((a: any) => ({
@@ -58,7 +72,7 @@ export default function AdminAmbassadorsPage() {
         }))
       );
     } catch (err) {
-      console.error('Error:', err);
+      console.error('Error loading ambassadors:', err);
     } finally {
       setLoading(false);
     }
@@ -85,8 +99,11 @@ export default function AdminAmbassadorsPage() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Ambassadors</h1>
-          <p className="text-muted-foreground">Manage and track all ambassadors</p>
+          <p className="text-muted-foreground">
+            Manage and track all ambassadors.
+          </p>
         </div>
+
         <Link href="/admin/invite">
           <Button className="gap-2">
             <UserPlus className="h-4 w-4" />
@@ -95,7 +112,6 @@ export default function AdminAmbassadorsPage() {
         </Link>
       </div>
 
-      {/* Filters */}
       <div className="flex gap-3 flex-wrap">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -106,13 +122,14 @@ export default function AdminAmbassadorsPage() {
             className="pl-9"
           />
         </div>
+
         <div className="flex gap-2">
-          {([
+          {[
             { key: 'total_points' as SortField, label: 'Points' },
             { key: 'total_leads' as SortField, label: 'Leads' },
             { key: 'total_conversions' as SortField, label: 'Conversions' },
             { key: 'available_balance' as SortField, label: 'Balance' },
-          ]).map((s) => (
+          ].map((s) => (
             <button
               key={s.key}
               onClick={() => setSortBy(s.key)}
@@ -128,80 +145,121 @@ export default function AdminAmbassadorsPage() {
         </div>
       </div>
 
-      {/* Ambassador Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((amb) => (
-          <Card
-            key={amb.id}
-            className="group hover:shadow-lg hover:shadow-emmy-primary/5 transition-all duration-300 border-slate-200/60"
-          >
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-full bg-emmy-primary text-white flex items-center justify-center text-sm font-bold border-2 border-slate-100 overflow-hidden">
-                    {amb.avatar_url ? (
-                      <img src={amb.avatar_url} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      amb.name[0]?.toUpperCase() || 'U'
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">{amb.name}</p>
-                    <p className="text-xs text-muted-foreground">{amb.ambassador_tag}</p>
-                  </div>
-                </div>
-                <Badge variant={amb.status === 'active' ? 'default' : 'secondary'}>
-                  {amb.status}
-                </Badge>
-              </div>
+      {filtered.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            No ambassadors found.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((amb) => (
+            <Card
+              key={amb.id}
+              className="group hover:shadow-lg hover:shadow-emmy-primary/5 transition-all duration-300 border-slate-200/60"
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-full bg-emmy-primary text-white flex items-center justify-center text-sm font-bold border-2 border-slate-100 overflow-hidden">
+                      {amb.avatar_url ? (
+                        <img
+                          src={amb.avatar_url}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        amb.name[0]?.toUpperCase() || 'U'
+                      )}
+                    </div>
 
-              <div className="grid grid-cols-2 gap-3 mt-4">
-                <div className="p-2.5 rounded-lg bg-slate-50">
-                  <div className="flex items-center gap-1.5">
-                    <Award className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="text-xs text-muted-foreground">Points</span>
+                    <div>
+                      <p className="font-semibold text-sm">{amb.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {amb.ambassador_tag}
+                      </p>
+                    </div>
                   </div>
-                  <p className="font-bold text-sm mt-0.5">{formatNumber(amb.total_points)}</p>
-                </div>
-                <div className="p-2.5 rounded-lg bg-slate-50">
-                  <div className="flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5 text-blue-500" />
-                    <span className="text-xs text-muted-foreground">Leads</span>
-                  </div>
-                  <p className="font-bold text-sm mt-0.5">{amb.total_leads}</p>
-                </div>
-                <div className="p-2.5 rounded-lg bg-slate-50">
-                  <div className="flex items-center gap-1.5">
-                    <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
-                    <span className="text-xs text-muted-foreground">Conversions</span>
-                  </div>
-                  <p className="font-bold text-sm mt-0.5">{amb.total_conversions}</p>
-                </div>
-                <div className="p-2.5 rounded-lg bg-slate-50">
-                  <div className="flex items-center gap-1.5">
-                    <DollarSign className="h-3.5 w-3.5 text-violet-500" />
-                    <span className="text-xs text-muted-foreground">Balance</span>
-                  </div>
-                  <p className="font-bold text-sm mt-0.5">{formatCurrency(amb.available_balance)}</p>
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between mt-4 pt-3 border-t">
-                <p className="text-xs text-muted-foreground">
-                  Cashed out: {formatCurrency(amb.total_cashed_out)}
-                </p>
-                <Link href={`/admin/ambassadors/${amb.id}`}>
-                  <Button variant="ghost" size="sm" className="gap-1 text-emmy-primary hover:text-emmy-primary hover:bg-emmy-primary/5">
-                    <Eye className="h-3.5 w-3.5" />
-                    View
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  <Badge
+                    variant={amb.status === 'active' ? 'default' : 'secondary'}
+                  >
+                    {amb.status}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  <div className="p-2.5 rounded-lg bg-slate-50">
+                    <div className="flex items-center gap-1.5">
+                      <Award className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="text-xs text-muted-foreground">
+                        Points
+                      </span>
+                    </div>
+                    <p className="font-bold text-sm mt-0.5">
+                      {formatNumber(amb.total_points)}
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-slate-50">
+                    <div className="flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5 text-blue-500" />
+                      <span className="text-xs text-muted-foreground">
+                        Leads
+                      </span>
+                    </div>
+                    <p className="font-bold text-sm mt-0.5">
+                      {amb.total_leads}
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-slate-50">
+                    <div className="flex items-center gap-1.5">
+                      <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                      <span className="text-xs text-muted-foreground">
+                        Conversions
+                      </span>
+                    </div>
+                    <p className="font-bold text-sm mt-0.5">
+                      {amb.total_conversions}
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-slate-50">
+                    <div className="flex items-center gap-1.5">
+                      <DollarSign className="h-3.5 w-3.5 text-violet-500" />
+                      <span className="text-xs text-muted-foreground">
+                        Balance
+                      </span>
+                    </div>
+                    <p className="font-bold text-sm mt-0.5">
+                      {formatCurrency(amb.available_balance)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-4 pt-3 border-t">
+                  <p className="text-xs text-muted-foreground">
+                    Cashed out: {formatCurrency(amb.total_cashed_out)}
+                  </p>
+
+                  <Link href={`/admin/ambassadors/${amb.id}`}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 text-emmy-primary hover:text-emmy-primary hover:bg-emmy-primary/5"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

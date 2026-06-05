@@ -1,0 +1,22 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/admin/activities/page": "/admin/activities",
+  "/admin/ambassadors/[id]/page": "/admin/ambassadors/[id]",
+  "/admin/ambassadors/page": "/admin/ambassadors",
+  "/admin/conversions/page": "/admin/conversions",
+  "/admin/invite/page": "/admin/invite",
+  "/admin/leads/page": "/admin/leads",
+  "/admin/page": "/admin",
+  "/auth/invite/page": "/auth/invite",
+  "/auth/login/page": "/auth/login",
+  "/dashboard/activity/new/page": "/dashboard/activity/new",
+  "/dashboard/activity/page": "/dashboard/activity",
+  "/dashboard/leaderboard/page": "/dashboard/leaderboard",
+  "/dashboard/leads/page": "/dashboard/leads",
+  "/dashboard/page": "/dashboard",
+  "/dashboard/payouts/page": "/dashboard/payouts",
+  "/dashboard/settings/page": "/dashboard/settings",
+  "/favicon.ico/route": "/favicon.ico",
+  "/page": "/"
+}

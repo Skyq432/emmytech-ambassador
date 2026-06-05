@@ -1,0 +1,22 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/admin/activities/page": "app/admin/activities/page.js",
+  "/admin/ambassadors/[id]/page": "app/admin/ambassadors/[id]/page.js",
+  "/admin/ambassadors/page": "app/admin/ambassadors/page.js",
+  "/admin/conversions/page": "app/admin/conversions/page.js",
+  "/admin/invite/page": "app/admin/invite/page.js",
+  "/admin/leads/page": "app/admin/leads/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/auth/invite/page": "app/auth/invite/page.js",
+  "/auth/login/page": "app/auth/login/page.js",
+  "/dashboard/activity/new/page": "app/dashboard/activity/new/page.js",
+  "/dashboard/activity/page": "app/dashboard/activity/page.js",
+  "/dashboard/leaderboard/page": "app/dashboard/leaderboard/page.js",
+  "/dashboard/leads/page": "app/dashboard/leads/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/payouts/page": "app/dashboard/payouts/page.js",
+  "/dashboard/settings/page": "app/dashboard/settings/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/page": "app/page.js"
+}

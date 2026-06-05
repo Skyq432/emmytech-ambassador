@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   LayoutDashboard, Users, Activity, MessageCircle, Trophy,
   Settings, DollarSign, Link2, BarChart3, LogOut, Shield,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
 const adminNav = [
@@ -19,13 +19,14 @@ const adminNav = [
   //{ label: 'Payouts', href: '/admin/payouts', icon: DollarSign },
   { label: 'Invite', href: '/admin/invite', icon: Link2 },
   //{ label: 'Leaderboard', href: '/admin/leaderboard', icon: Trophy },
+  { label: 'Settings', href: '/admin/settings', icon: Settings },
 ];
 
 const ambassadorNav = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'My Leads', href: '/dashboard/leads', icon: MessageCircle },
   { label: 'Activity', href: '/dashboard/activity', icon: Activity },
-  //{ label: 'Leaderboard', href: '/dashboard/leaderboard', icon: Trophy },
+  { label: 'Leaderboard', href: '/dashboard/leaderboard', icon: Trophy },
   //{ label: 'Payouts', href: '/dashboard/payouts', icon: DollarSign },
   { label: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];

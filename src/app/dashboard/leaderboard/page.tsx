@@ -2,224 +2,104 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Trophy, Medal, Award, TrendingUp, Users } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Trophy } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 
 interface LeaderboardEntry {
   rank: number;
-  ambassador_id: string;
+  id: string;
   full_name: string;
   total_points: number;
-  total_posts: number;
-  total_leads: number;
-  total_conversions: number;
 }
 
 export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [myRank, setMyRank] = useState<LeaderboardEntry | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchLeaderboard() {
-      try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
+      const supabase = createClient();
 
-        // Fetch from the leaderboard view
-        const { data, error } = await supabase
-          .from('leaderboard')
-          .select('*')
-          .order('total_points', { ascending: false })
-          .limit(50);
+      const { data, error } = await supabase
+        .from('ambassadors')
+        .select(`
+          id,
+          ambassador_tag,
+          total_points,
+          status,
+          users(name)
+        `)
+        .neq('status', 'deleted')
+        .order('total_points', { ascending: false });
 
-        if (error) throw error;
-
-        // Add rank to each entry
-        const ranked = (data || []).map((entry, index) => ({
-          ...entry,
-          rank: index + 1,
-        }));
-
-        setEntries(ranked);
-
-        // Find current user's rank
-        const userEntry = ranked.find(e => e.ambassador_id === user.id);
-        if (userEntry) {
-          setMyRank(userEntry);
-        }
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
+      if (error) {
+        console.error('Error loading leaderboard:', error);
+        setEntries([]);
         setLoading(false);
+        return;
       }
+
+      const ranked = (data || []).map((entry: any, index: number) => ({
+        rank: index + 1,
+        id: entry.id,
+        full_name:
+          entry.users?.name ||
+          entry.ambassador_tag ||
+          'Ambassador',
+        total_points: entry.total_points || 0,
+      }));
+
+      setEntries(ranked);
+      setLoading(false);
     }
 
     fetchLeaderboard();
   }, []);
 
-  const getRankIcon = (rank: number) => {
-    switch (rank) {
-      case 1: return <Trophy className="h-6 w-6 text-yellow-500" />;
-      case 2: return <Medal className="h-6 w-6 text-gray-400" />;
-      case 3: return <Award className="h-6 w-6 text-amber-600" />;
-      default: return <span className="text-lg font-bold text-muted-foreground w-6 text-center">#{rank}</span>;
-    }
-  };
-
-  const getRankStyle = (rank: number) => {
-    switch (rank) {
-      case 1: return 'bg-yellow-50 border-yellow-200';
-      case 2: return 'bg-gray-50 border-gray-200';
-      case 3: return 'bg-amber-50 border-amber-200';
-      default: return '';
-    }
-  };
-
-const getInitials = (name: string | null | undefined) => {
-  if (!name) return '??';
-  return name
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .substring(0, 2);
-};
-
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="h-8 w-64 bg-slate-200 rounded animate-pulse" />
-        <div className="h-32 bg-slate-200 rounded animate-pulse" />
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Card key={i}>
-            <CardContent className="p-6">
-              <div className="h-12 w-full bg-slate-200 rounded animate-pulse" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-        <p className="text-red-600">Error loading leaderboard: {error}</p>
-      </div>
-    );
+    return <p className="text-slate-500">Loading leaderboard...</p>;
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Leaderboard</h1>
-        <p className="text-muted-foreground">Top performing ambassadors this month</p>
+        <h1 className="text-3xl font-bold text-slate-900">Leaderboard</h1>
+        <p className="text-slate-500">Ambassador ranking by points</p>
       </div>
 
-      {/* My Rank Card */}
-      {myRank && (
-        <Card className="bg-emmy-primary/5 border-emmy-primary/20">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-emmy-primary flex items-center justify-center text-white font-bold text-lg">
-                  #{myRank.rank}
-                </div>
-                <div>
-                  <p className="font-semibold text-lg">Your Position</p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatNumber(myRank.total_points)} points
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <TrendingUp className="h-4 w-4" />
-                  <span>{myRank.total_posts} posts</span>
-                  <span>•</span>
-                  <span>{myRank.total_leads} leads</span>
-                  <span>•</span>
-                  <span>{myRank.total_conversions} conversions</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Top 3 Podium */}
-      {entries.length >= 3 && (
-        <div className="grid grid-cols-3 gap-4 items-end">
-          {[1, 0, 2].map((index) => {
-            const entry = entries[index];
-            if (!entry) return null;
-            const heights = ['h-32', 'h-40', 'h-32'];
-            const positions = ['2nd', '1st', '3rd'];
-            return (
-              <Card key={entry.ambassador_id} className={`${getRankStyle(entry.rank)} ${heights[index]}`}>
-                <CardContent className="p-4 text-center h-full flex flex-col justify-between">
-                  <div>
-                    <div className="h-12 w-12 mx-auto mb-2 rounded-full bg-emmy-primary/10 flex items-center justify-center text-emmy-primary font-bold">
-                      {getInitials(entry.full_name)}
-                    </div>
-                    <p className="font-semibold text-sm truncate">{entry.full_name}</p>
-                    <p className="text-xs text-muted-foreground">{positions[index]}</p>
-                  </div>
-                  <p className="text-lg font-bold">{formatNumber(entry.total_points)} pts</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Full List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            All Rankings
-          </CardTitle>
-        </CardHeader>
+      <Card className="border-0 shadow-sm rounded-2xl overflow-hidden">
         <CardContent className="p-0">
           {entries.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              No ambassadors on the leaderboard yet
+            <div className="p-8 text-center text-slate-500">
+              No ambassadors on the leaderboard yet.
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-slate-100">
               {entries.map((entry) => (
-                <div 
-                  key={entry.ambassador_id} 
-                  className={`flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors ${
-                    entry.ambassador_id === myRank?.ambassador_id ? 'bg-emmy-primary/5' : ''
-                  }`}
+                <div
+                  key={entry.id}
+                  className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors"
                 >
-                  <div className="w-12 flex justify-center">
-                    {getRankIcon(entry.rank)}
-                  </div>
-
-                  <div className="h-10 w-10 rounded-full bg-emmy-primary/10 flex items-center justify-center text-emmy-primary font-bold text-sm">
-                    {getInitials(entry.full_name)}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{entry.full_name}</p>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>{entry.total_posts} posts</span>
-                      <span>{entry.total_leads} leads</span>
-                      <span>{entry.total_conversions} conversions</span>
+                  <div className="flex items-center gap-4">
+                    <div className="h-11 w-11 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-700">
+                      {entry.rank === 1 ? (
+                        <Trophy className="h-5 w-5 text-yellow-500" />
+                      ) : (
+                        entry.rank
+                      )}
                     </div>
+
+                    <p className="font-semibold text-slate-900">
+                      {entry.full_name}
+                    </p>
                   </div>
 
                   <div className="text-right">
-                    <p className="font-bold text-lg">{formatNumber(entry.total_points)}</p>
-                    <p className="text-xs text-muted-foreground">points</p>
+                    <p className="text-xl font-bold text-emmy-primary">
+                      {formatNumber(entry.total_points)}
+                    </p>
+                    <p className="text-xs text-slate-500">points</p>
                   </div>
                 </div>
               ))}
