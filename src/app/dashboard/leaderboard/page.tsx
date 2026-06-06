@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
-import { Trophy } from 'lucide-react';
+import { Trophy, Medal, Award } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 
 interface LeaderboardEntry {
@@ -43,10 +43,7 @@ export default function LeaderboardPage() {
       const ranked = (data || []).map((entry: any, index: number) => ({
         rank: index + 1,
         id: entry.id,
-        full_name:
-          entry.users?.name ||
-          entry.ambassador_tag ||
-          'Ambassador',
+        full_name: entry.users?.name || entry.ambassador_tag || 'Ambassador',
         total_points: entry.total_points || 0,
       }));
 
@@ -58,55 +55,125 @@ export default function LeaderboardPage() {
   }, []);
 
   if (loading) {
-    return <p className="text-slate-500">Loading leaderboard...</p>;
+    return (
+      <div className="rounded-2xl bg-white p-6 shadow-sm">
+        <p className="text-sm text-slate-500">Loading leaderboard...</p>
+      </div>
+    );
   }
+
+  const topThree = entries.slice(0, 3);
+  const rest = entries.slice(3);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">Leaderboard</h1>
-        <p className="text-slate-500">Ambassador ranking by points</p>
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+          Leaderboard
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 sm:text-base">
+          Ambassador ranking by points.
+        </p>
       </div>
 
-      <Card className="border-0 shadow-sm rounded-2xl overflow-hidden">
-        <CardContent className="p-0">
-          {entries.length === 0 ? (
-            <div className="p-8 text-center text-slate-500">
-              No ambassadors on the leaderboard yet.
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {entries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex items-center justify-between p-5 hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="h-11 w-11 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-700">
-                      {entry.rank === 1 ? (
-                        <Trophy className="h-5 w-5 text-yellow-500" />
-                      ) : (
-                        entry.rank
-                      )}
-                    </div>
+      {entries.length === 0 ? (
+        <Card className="rounded-2xl border-0 shadow-sm">
+          <CardContent className="p-8 text-center text-slate-500">
+            No ambassadors on the leaderboard yet.
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {topThree.map((entry) => (
+              <TopRankCard key={entry.id} entry={entry} />
+            ))}
+          </div>
 
-                    <p className="font-semibold text-slate-900">
-                      {entry.full_name}
-                    </p>
-                  </div>
+          <Card className="overflow-hidden rounded-2xl border-0 shadow-sm">
+            <CardContent className="p-0">
+              <div className="divide-y divide-slate-100">
+                {(rest.length > 0 ? rest : entries).map((entry) => (
+                  <LeaderboardRow key={entry.id} entry={entry} />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
 
-                  <div className="text-right">
-                    <p className="text-xl font-bold text-emmy-primary">
-                      {formatNumber(entry.total_points)}
-                    </p>
-                    <p className="text-xs text-slate-500">points</p>
-                  </div>
-                </div>
-              ))}
+function TopRankCard({ entry }: { entry: LeaderboardEntry }) {
+  const Icon = entry.rank === 1 ? Trophy : entry.rank === 2 ? Medal : Award;
+
+  return (
+    <Card className="rounded-2xl border-0 bg-white shadow-sm">
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3 sm:flex-col sm:text-center">
+          <div className="flex items-center gap-3 sm:flex-col">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                entry.rank === 1
+                  ? 'bg-yellow-100'
+                  : entry.rank === 2
+                    ? 'bg-slate-100'
+                    : 'bg-amber-100'
+              }`}
+            >
+              <Icon
+                className={`h-6 w-6 ${
+                  entry.rank === 1
+                    ? 'text-yellow-600'
+                    : entry.rank === 2
+                      ? 'text-slate-500'
+                      : 'text-amber-600'
+                }`}
+              />
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Rank #{entry.rank}
+              </p>
+              <p className="truncate font-semibold text-slate-900">
+                {entry.full_name}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right sm:text-center">
+            <p className="text-xl font-bold text-emmy-primary">
+              {formatNumber(entry.total_points)}
+            </p>
+            <p className="text-xs text-slate-500">points</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
+  return (
+    <div className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-slate-50 sm:p-5">
+      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700 sm:h-11 sm:w-11">
+          #{entry.rank}
+        </div>
+
+        <p className="truncate font-semibold text-slate-900">
+          {entry.full_name}
+        </p>
+      </div>
+
+      <div className="shrink-0 text-right">
+        <p className="text-lg font-bold text-emmy-primary sm:text-xl">
+          {formatNumber(entry.total_points)}
+        </p>
+        <p className="text-xs text-slate-500">points</p>
+      </div>
     </div>
   );
 }

@@ -12,14 +12,11 @@ import {
   Search,
   Users,
   CheckCircle,
-  ArrowLeft,
-  ChevronRight,
   Inbox,
   Edit,
   Save,
   X,
 } from 'lucide-react';
-import Link from 'next/link';
 import { formatDate } from '@/lib/utils';
 
 interface Lead {
@@ -49,7 +46,7 @@ export default function AdminLeadsPage() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editStatus, setEditStatus] = useState<'new' | 'contacted' | 'converted' | 'lost'>('new');
+  const [editStatus, setEditStatus] = useState<Lead['status']>('new');
   const [editNotes, setEditNotes] = useState('');
 
   const supabase = createClient();
@@ -62,12 +59,6 @@ export default function AdminLeadsPage() {
     try {
       setLoading(true);
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.user) throw new Error('Not authenticated');
-
       const { data, error } = await supabase
         .from('leads')
         .select('*, ambassadors(id, ambassador_tag, users(name))')
@@ -75,22 +66,22 @@ export default function AdminLeadsPage() {
 
       if (error) throw error;
 
-      const formatted: Lead[] = (data || []).map((l: any) => ({
-        id: l.id,
-        ambassador_id: l.ambassador_id,
-        ambassador_name: l.ambassadors?.users?.name || 'Unknown',
-        ambassador_tag: l.ambassadors?.ambassador_tag || '',
-        source: l.source,
-        customer_name: l.customer_name,
-        customer_phone: l.customer_phone,
-        customer_email: l.customer_email,
-        referral_code_used: l.referral_code_used,
-        status: l.status,
-        notes: l.notes,
-        created_at: l.created_at,
-      }));
-
-      setLeads(formatted);
+      setLeads(
+        (data || []).map((l: any) => ({
+          id: l.id,
+          ambassador_id: l.ambassador_id,
+          ambassador_name: l.ambassadors?.users?.name || 'Unknown',
+          ambassador_tag: l.ambassadors?.ambassador_tag || '',
+          source: l.source,
+          customer_name: l.customer_name,
+          customer_phone: l.customer_phone,
+          customer_email: l.customer_email,
+          referral_code_used: l.referral_code_used,
+          status: l.status,
+          notes: l.notes,
+          created_at: l.created_at,
+        }))
+      );
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -150,13 +141,15 @@ export default function AdminLeadsPage() {
   }
 
   const filteredLeads = leads.filter((lead) => {
+    const searchTerm = search.toLowerCase();
+
     const matchesSearch =
-      lead.customer_phone.toLowerCase().includes(search.toLowerCase()) ||
-      lead.ambassador_name.toLowerCase().includes(search.toLowerCase()) ||
-      lead.ambassador_tag.toLowerCase().includes(search.toLowerCase()) ||
-      lead.source.toLowerCase().includes(search.toLowerCase()) ||
-      (lead.customer_name?.toLowerCase().includes(search.toLowerCase()) || false) ||
-      (lead.customer_email?.toLowerCase().includes(search.toLowerCase()) || false);
+      lead.customer_phone.toLowerCase().includes(searchTerm) ||
+      lead.ambassador_name.toLowerCase().includes(searchTerm) ||
+      lead.ambassador_tag.toLowerCase().includes(searchTerm) ||
+      lead.source.toLowerCase().includes(searchTerm) ||
+      (lead.customer_name?.toLowerCase().includes(searchTerm) || false) ||
+      (lead.customer_email?.toLowerCase().includes(searchTerm) || false);
 
     const matchesFilter = filter === 'all' || lead.status === filter;
 
@@ -176,11 +169,11 @@ export default function AdminLeadsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="h-8 w-64 bg-slate-200/50 rounded animate-pulse" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="space-y-5">
+        <div className="h-8 w-48 animate-pulse rounded bg-slate-200/60" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-slate-200/50 rounded-xl animate-pulse" />
+            <div key={i} className="h-24 animate-pulse rounded-2xl bg-slate-200/60" />
           ))}
         </div>
       </div>
@@ -189,101 +182,48 @@ export default function AdminLeadsPage() {
 
   if (error) {
     return (
-      <div className="p-4 border border-red-200/50 bg-red-50/50 rounded-xl">
-        <p className="text-red-600">Error: {error}</p>
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+        <p className="text-sm text-red-600">Error: {error}</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-4">
-        <Link href="/admin">
-          <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-900">
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            Back
-          </Button>
-        </Link>
-
-        <div className="h-6 w-px bg-slate-200" />
-
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <span>Admin</span>
-          <ChevronRight className="w-4 h-4" />
-          <span className="text-slate-900 font-medium">Leads</span>
-        </div>
-      </div>
-
+    <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">Lead Management</h1>
-        <p className="text-slate-500 mt-1">
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+          Lead Management
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 sm:text-base">
           Track, edit and update all ambassador leads.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="border border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center">
-                <Users className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{totalLeads}</p>
-                <p className="text-sm text-slate-500">Total Leads</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center">
-                <MessageCircle className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{newLeads}</p>
-                <p className="text-sm text-slate-500">New Leads</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{convertedLeads}</p>
-                <p className="text-sm text-slate-500">Converted</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard icon={Users} title="Total Leads" value={totalLeads} />
+        <StatCard icon={MessageCircle} title="New Leads" value={newLeads} />
+        <StatCard icon={CheckCircle} title="Converted" value={convertedLeads} />
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      <div className="space-y-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
             placeholder="Search leads..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 border-slate-200"
+            className="pl-9"
           />
         </div>
 
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {(['all', 'new', 'contacted', 'converted', 'lost'] as const).map((f) => (
             <Button
               key={f}
               variant={filter === f ? 'default' : 'outline'}
               size="sm"
               onClick={() => setFilter(f)}
-              className={filter === f ? 'bg-slate-900 text-white border-0' : 'border-slate-200'}
+              className="shrink-0"
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
             </Button>
@@ -291,125 +231,172 @@ export default function AdminLeadsPage() {
         </div>
       </div>
 
-      <Card className="border border-slate-200 shadow-sm overflow-hidden">
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50">
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Lead</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Ambassador</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Source</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Date</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Status</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Actions</th>
-                </tr>
-              </thead>
+      {/* Mobile Cards */}
+      <div className="space-y-3 lg:hidden">
+        {filteredLeads.length === 0 ? (
+          <EmptyState />
+        ) : (
+          filteredLeads.map((lead) => {
+            const status = statusConfig[lead.status] || statusConfig.new;
 
-              <tbody>
-                {filteredLeads.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-16 text-center">
-                      <Inbox className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                      <p className="text-slate-500 text-lg">No leads found</p>
-                      <p className="text-sm text-slate-400 mt-1">
-                        Leads will appear here when ambassadors generate them.
+            return (
+              <Card key={lead.id} className="rounded-2xl border-slate-200">
+                <CardContent className="space-y-4 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500">
+                        <Phone className="h-4 w-4 text-white" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-900">
+                          {lead.customer_name || lead.customer_phone}
+                        </p>
+                        <p className="text-sm text-slate-500">{lead.customer_phone}</p>
+                        {lead.customer_email && (
+                          <p className="truncate text-sm text-slate-500">
+                            {lead.customer_email}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${status.color}`}
+                    >
+                      {status.label}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 rounded-xl bg-slate-50 p-3 text-sm">
+                    <div>
+                      <p className="text-xs text-slate-500">Ambassador</p>
+                      <p className="font-medium text-slate-800">
+                        {lead.ambassador_name}
                       </p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredLeads.map((lead) => {
-                    const status = statusConfig[lead.status] || statusConfig.new;
+                      <p className="text-xs text-slate-500">{lead.ambassador_tag}</p>
+                    </div>
 
-                    return (
-                      <tr
-                        key={lead.id}
-                        className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors"
-                      >
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
-                              <Phone className="w-4 h-4 text-white" />
-                            </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Source</p>
+                      <p className="capitalize text-slate-800">{lead.source}</p>
+                      {lead.referral_code_used && (
+                        <p className="text-xs text-slate-500">
+                          Ref: {lead.referral_code_used}
+                        </p>
+                      )}
+                    </div>
 
-                            <div>
-                              <span className="font-medium text-slate-900 text-sm">
-                                {lead.customer_name || lead.customer_phone}
-                              </span>
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <Calendar className="h-4 w-4" />
+                      {formatDate(lead.created_at)}
+                    </div>
+                  </div>
 
-                              <p className="text-xs text-slate-500">
-                                {lead.customer_phone}
-                              </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={() => openEditModal(lead)}
+                  >
+                    <Edit className="h-4 w-4" />
+                    Edit Lead
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
+      </div>
 
-                              {lead.customer_email && (
-                                <p className="text-xs text-slate-500">
-                                  {lead.customer_email}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
+      {/* Desktop Table */}
+      <Card className="hidden overflow-hidden border-slate-200 shadow-sm lg:block">
+        <CardContent className="p-0">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b bg-slate-50">
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">Lead</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">Ambassador</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">Source</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">Date</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">Status</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">Actions</th>
+              </tr>
+            </thead>
 
-                        <td className="py-4 px-6">
-                          <div>
-                            <span className="text-sm font-medium text-slate-700">
-                              {lead.ambassador_name}
-                            </span>
-                            <p className="text-xs text-slate-500">{lead.ambassador_tag}</p>
-                          </div>
-                        </td>
+            <tbody>
+              {filteredLeads.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    <EmptyState />
+                  </td>
+                </tr>
+              ) : (
+                filteredLeads.map((lead) => {
+                  const status = statusConfig[lead.status] || statusConfig.new;
 
-                        <td className="py-4 px-6">
-                          <span className="text-sm text-slate-700 capitalize">
-                            {lead.source}
-                          </span>
-                          {lead.referral_code_used && (
-                            <p className="text-xs text-slate-500">
-                              Ref: {lead.referral_code_used}
-                            </p>
-                          )}
-                        </td>
+                  return (
+                    <tr key={lead.id} className="border-b hover:bg-slate-50">
+                      <td className="px-6 py-4">
+                        <p className="font-medium text-slate-900">
+                          {lead.customer_name || lead.customer_phone}
+                        </p>
+                        <p className="text-sm text-slate-500">{lead.customer_phone}</p>
+                        {lead.customer_email && (
+                          <p className="text-sm text-slate-500">{lead.customer_email}</p>
+                        )}
+                      </td>
 
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2 text-sm text-slate-500">
-                            <Calendar className="w-4 h-4" />
-                            {formatDate(lead.created_at)}
-                          </div>
-                        </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-medium text-slate-700">
+                          {lead.ambassador_name}
+                        </p>
+                        <p className="text-xs text-slate-500">{lead.ambassador_tag}</p>
+                      </td>
 
-                        <td className="py-4 px-6">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.color}`}
-                          >
-                            {status.label}
-                          </span>
-                        </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm capitalize text-slate-700">{lead.source}</p>
+                        {lead.referral_code_used && (
+                          <p className="text-xs text-slate-500">
+                            Ref: {lead.referral_code_used}
+                          </p>
+                        )}
+                      </td>
 
-                        <td className="py-4 px-6">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
-                            onClick={() => openEditModal(lead)}
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                            Edit
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                      <td className="px-6 py-4 text-sm text-slate-500">
+                        {formatDate(lead.created_at)}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.color}`}>
+                          {status.label}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 text-blue-600"
+                          onClick={() => openEditModal(lead)}
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </CardContent>
       </Card>
 
       {editingLead && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <Card className="w-full max-w-xl rounded-2xl">
-            <CardContent className="p-6 space-y-5">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+          <Card className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl border-0 sm:max-w-xl sm:rounded-2xl">
+            <CardContent className="space-y-5 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">Edit Lead</h2>
@@ -418,46 +405,25 @@ export default function AdminLeadsPage() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={closeEditModal}
-                  className="rounded-full p-2 hover:bg-slate-100"
-                >
+                <button onClick={closeEditModal} className="rounded-full p-2 hover:bg-slate-100">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Customer Name</label>
-                  <Input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="Customer name"
-                  />
-                </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Customer Name">
+                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+                </Field>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Phone Number</label>
-                  <Input
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    placeholder="+234..."
-                  />
-                </div>
+                <Field label="Phone Number">
+                  <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+                </Field>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Email</label>
-                  <Input
-                    type="email"
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                    placeholder="customer@example.com"
-                  />
-                </div>
+                <Field label="Email">
+                  <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+                </Field>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Status</label>
+                <Field label="Status">
                   <select
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value as Lead['status'])}
@@ -468,21 +434,19 @@ export default function AdminLeadsPage() {
                     <option value="converted">Converted</option>
                     <option value="lost">Lost</option>
                   </select>
-                </div>
+                </Field>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notes</label>
+              <Field label="Notes">
                 <textarea
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Add notes about this lead..."
                   rows={4}
                   className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-emmy-primary"
                 />
-              </div>
+              </Field>
 
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <Button variant="ghost" onClick={closeEditModal}>
                   Cancel
                 </Button>
@@ -496,6 +460,59 @@ export default function AdminLeadsPage() {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  title,
+  value,
+}: {
+  icon: any;
+  title: string;
+  value: number;
+}) {
+  return (
+    <Card className="rounded-2xl border-slate-200 shadow-sm">
+      <CardContent className="p-4 sm:p-6">
+        <div className="flex items-center gap-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500 sm:h-12 sm:w-12">
+            <Icon className="h-5 w-5 text-white sm:h-6 sm:w-6" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-slate-900">{value}</p>
+            <p className="text-sm text-slate-500">{title}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium text-slate-700">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="py-12 text-center">
+      <Inbox className="mx-auto mb-4 h-14 w-14 text-slate-300" />
+      <p className="text-lg text-slate-500">No leads found</p>
+      <p className="mt-1 text-sm text-slate-400">
+        Leads will appear here when ambassadors generate them.
+      </p>
     </div>
   );
 }

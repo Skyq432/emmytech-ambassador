@@ -7,10 +7,27 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDate, POINT_VALUES } from '@/lib/utils';
-import { Share2, Camera, MessageSquare, Video, Search, ExternalLink, Plus } from 'lucide-react';
+import {
+  Share2,
+  Camera,
+  MessageSquare,
+  Video,
+  Search,
+  ExternalLink,
+  Plus,
+  Clock,
+  CheckCircle,
+} from 'lucide-react';
 import Link from 'next/link';
 
-type BadgeVariant = 'default' | 'secondary' | 'success' | 'warning' | 'danger' | 'outline' | 'info';
+type BadgeVariant =
+  | 'default'
+  | 'secondary'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'outline'
+  | 'info';
 
 interface Activity {
   id: string;
@@ -43,35 +60,38 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'approved' | 'pending_review' | 'rejected'>('all');
+  const [filter, setFilter] = useState<
+    'all' | 'approved' | 'pending_review' | 'rejected'
+  >('all');
 
   useEffect(() => {
     async function fetchActivities() {
       try {
         const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) throw new Error('Not authenticated');
 
-        const userId = session.user.id;
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session?.user) throw new Error('Not authenticated');
 
         const { data: ambassadorData, error: ambassadorError } = await supabase
           .from('ambassadors')
           .select('id')
-          .eq('user_id', userId)
+          .eq('user_id', session.user.id)
           .maybeSingle();
 
         if (ambassadorError) throw new Error('Ambassador profile not found');
         if (!ambassadorData) throw new Error('No ambassador profile found');
 
-        const ambassadorId = ambassadorData.id;
-
         const { data, error } = await supabase
           .from('activities')
           .select('*')
-          .eq('ambassador_id', ambassadorId)
+          .eq('ambassador_id', ambassadorData.id)
           .order('submitted_at', { ascending: false });
 
         if (error) throw error;
+
         setActivities(data || []);
       } catch (err: any) {
         setError(err.message);
@@ -84,47 +104,62 @@ export default function ActivityPage() {
   }, []);
 
   const getStatusBadge = (status: Activity['status']) => {
-    const variants: { pending_review: BadgeVariant; approved: BadgeVariant; rejected: BadgeVariant } = {
+    const variants: {
+      pending_review: BadgeVariant;
+      approved: BadgeVariant;
+      rejected: BadgeVariant;
+    } = {
       pending_review: 'warning',
       approved: 'success',
       rejected: 'danger',
     };
+
     const labels: Record<Activity['status'], string> = {
       pending_review: 'Pending',
       approved: 'Approved',
       rejected: 'Rejected',
     };
+
     return <Badge variant={variants[status]}>{labels[status]}</Badge>;
   };
 
-  const filteredActivities = activities.filter(activity => {
-    const matchesSearch = 
-      (activity.caption?.toLowerCase().includes(search.toLowerCase()) || false) || 
-      (activity.platform?.toLowerCase().includes(search.toLowerCase()) || false);
+  const filteredActivities = activities.filter((activity) => {
+    const q = search.toLowerCase();
+
+    const matchesSearch =
+      activity.caption?.toLowerCase().includes(q) ||
+      activity.platform?.toLowerCase().includes(q) ||
+      activity.post_url?.toLowerCase().includes(q);
+
     const matchesFilter = filter === 'all' || activity.status === filter;
+
     return matchesSearch && matchesFilter;
   });
 
   const totalPoints = activities
-    .filter(a => a.status === 'approved')
+    .filter((a) => a.status === 'approved')
     .reduce((sum, a) => sum + (a.points_awarded || POINT_VALUES.post), 0);
 
-  const pendingCount = activities.filter(a => a.status === 'pending_review').length;
+  const pendingCount = activities.filter(
+    (a) => a.status === 'pending_review'
+  ).length;
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="h-8 w-64 bg-slate-200 rounded animate-pulse" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="space-y-5">
+        <div className="h-8 w-48 animate-pulse rounded bg-slate-200" />
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-slate-200 rounded animate-pulse" />
+            <div key={i} className="h-24 animate-pulse rounded-2xl bg-slate-200" />
           ))}
         </div>
+
         {[1, 2, 3].map((i) => (
-          <Card key={i}>
-            <CardContent className="p-6">
-              <div className="h-4 w-full bg-slate-200 rounded animate-pulse mb-2" />
-              <div className="h-4 w-3/4 bg-slate-200 rounded animate-pulse" />
+          <Card key={i} className="rounded-2xl">
+            <CardContent className="p-5">
+              <div className="mb-2 h-4 w-full animate-pulse rounded bg-slate-200" />
+              <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" />
             </CardContent>
           </Card>
         ))}
@@ -134,74 +169,59 @@ export default function ActivityPage() {
 
   if (error) {
     return (
-      <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-        <p className="text-red-600">Error loading activity: {error}</p>
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+        <p className="text-sm text-red-600">Error loading activity: {error}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">My Activity</h1>
-          <p className="text-slate-500 mt-1">Track your social media posts and engagement</p>
+          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+            My Activity
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 sm:text-base">
+            Track your social media posts and engagement.
+          </p>
         </div>
-        <Link href="/dashboard/activity/new">
-          <Button className="bg-emmy-primary hover:bg-emmy-primary-light">
-            <Plus className="w-4 h-4 mr-2" />
+
+        <Link href="/dashboard/activity/new" className="w-full sm:w-auto">
+          <Button className="w-full gap-2 bg-emmy-primary hover:bg-emmy-primary-light sm:w-auto">
+            <Plus className="h-4 w-4" />
             Submit New Post
           </Button>
         </Link>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="emmy-card">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-emmy-primary/10 flex items-center justify-center">
-                <Share2 className="w-6 h-6 text-emmy-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{activities.length}</p>
-                <p className="text-sm text-slate-500">Total Posts</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="emmy-card">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-emmy-secondary/10 flex items-center justify-center">
-                <Share2 className="w-6 h-6 text-emmy-secondary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{totalPoints}</p>
-                <p className="text-sm text-slate-500">Points Earned</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="emmy-card">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center">
-                <Share2 className="w-6 h-6 text-yellow-700" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{pendingCount}</p>
-                <p className="text-sm text-slate-500">Pending Review</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          icon={Share2}
+          title="Total Posts"
+          value={activities.length}
+          color="bg-emmy-primary/10 text-emmy-primary"
+        />
+
+        <StatCard
+          icon={CheckCircle}
+          title="Points Earned"
+          value={totalPoints}
+          color="bg-emmy-secondary/10 text-emmy-secondary"
+        />
+
+        <StatCard
+          icon={Clock}
+          title="Pending Review"
+          value={pendingCount}
+          color="bg-yellow-100 text-yellow-700"
+        />
       </div>
 
-      {/* Search & Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      <div className="space-y-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
           <Input
             placeholder="Search posts..."
             value={search}
@@ -209,72 +229,104 @@ export default function ActivityPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex gap-2">
-          {(['all', 'approved', 'pending_review', 'rejected'] as const).map((f) => (
-            <Button
-              key={f}
-              variant={filter === f ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilter(f)}
-              className={filter === f ? 'bg-emmy-primary' : ''}
-            >
-              {f === 'pending_review' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1)}
-            </Button>
-          ))}
+
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {(['all', 'approved', 'pending_review', 'rejected'] as const).map(
+            (f) => (
+              <Button
+                key={f}
+                variant={filter === f ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilter(f)}
+                className={`shrink-0 ${
+                  filter === f ? 'bg-emmy-primary' : ''
+                }`}
+              >
+                {f === 'pending_review'
+                  ? 'Pending'
+                  : f.charAt(0).toUpperCase() + f.slice(1)}
+              </Button>
+            )
+          )}
         </div>
       </div>
 
-      {/* Activities List */}
       <div className="space-y-3">
         {filteredActivities.length === 0 ? (
-          <Card className="emmy-card">
+          <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="p-8 text-center">
               <p className="text-slate-500">No posts found</p>
-              <p className="text-sm text-slate-400 mt-1">
-                {activities.length === 0 ? 'Submit your first post to start earning points!' : 'Try adjusting your search or filter'}
+              <p className="mt-1 text-sm text-slate-400">
+                {activities.length === 0
+                  ? 'Submit your first post to start earning points.'
+                  : 'Try adjusting your search or filter.'}
               </p>
             </CardContent>
           </Card>
         ) : (
           filteredActivities.map((activity) => {
-            const Icon = platformIcons[activity.platform.toLowerCase()] || Share2;
-            const colorClass = platformColors[activity.platform.toLowerCase()] || 'bg-slate-100 text-slate-700';
+            const platform = activity.platform.toLowerCase();
+            const Icon = platformIcons[platform] || Share2;
+            const colorClass =
+              platformColors[platform] || 'bg-slate-100 text-slate-700';
 
             return (
-              <Card key={activity.id} className="emmy-card hover:shadow-md transition-shadow">
-                <CardContent className="p-5">
-                  <div className="flex items-start gap-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${colorClass}`}>
-                      <Icon className="w-6 h-6" />
+              <Card
+                key={activity.id}
+                className="rounded-2xl border-slate-200 transition-shadow hover:shadow-md"
+              >
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex gap-3 sm:gap-4">
+                    <div
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl sm:h-12 sm:w-12 ${colorClass}`}
+                    >
+                      <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-slate-900 capitalize">{activity.platform}</span>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold capitalize text-slate-900">
+                          {activity.platform}
+                        </span>
+
                         {getStatusBadge(activity.status)}
+
                         {(activity.points_awarded || 0) > 0 && (
-                          <Badge variant="secondary" className="text-emmy-secondary">+{activity.points_awarded} pts</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="text-emmy-secondary"
+                          >
+                            +{activity.points_awarded} pts
+                          </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-slate-700 mb-2">{activity.caption || 'No caption'}</p>
-                      <div className="flex items-center gap-4 text-xs text-slate-400">
+
+                      <p className="mt-2 line-clamp-3 text-sm text-slate-700">
+                        {activity.caption || 'No caption'}
+                      </p>
+
+                      <div className="mt-2 flex flex-col gap-2 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
                         <span>Submitted: {formatDate(activity.submitted_at)}</span>
+
+                        {activity.post_url && (
+                          <a
+                            href={activity.post_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-emmy-primary hover:underline"
+                          >
+                            View Post
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
                       </div>
+
                       {activity.rejection_reason && (
-                        <p className="text-sm text-red-600 bg-red-50 p-2 rounded mt-2">
+                        <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600">
                           Reason: {activity.rejection_reason}
                         </p>
                       )}
                     </div>
-                    {activity.post_url && (
-                      <a 
-                        href={activity.post_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="p-2 text-slate-400 hover:text-emmy-primary transition-colors"
-                      >
-                        <ExternalLink className="w-5 h-5" />
-                      </a>
-                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -283,5 +335,34 @@ export default function ActivityPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  title,
+  value,
+  color,
+}: {
+  icon: any;
+  title: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <Card className="rounded-2xl border-slate-200 shadow-sm">
+      <CardContent className="p-4 sm:p-6">
+        <div className="flex items-center gap-4">
+          <div className={`flex h-11 w-11 items-center justify-center rounded-xl sm:h-12 sm:w-12 ${color}`}>
+            <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
+          </div>
+
+          <div>
+            <p className="text-2xl font-bold text-slate-900">{value}</p>
+            <p className="text-sm text-slate-500">{title}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
