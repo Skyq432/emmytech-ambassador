@@ -3,12 +3,21 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  MessageCircle, Phone, Calendar, Search, 
-  TrendingUp, Users, CheckCircle, ArrowRight, ArrowLeft, ChevronRight, Inbox
+import {
+  MessageCircle,
+  Phone,
+  Calendar,
+  Search,
+  Users,
+  CheckCircle,
+  ArrowLeft,
+  ChevronRight,
+  Inbox,
+  Edit,
+  Save,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate } from '@/lib/utils';
@@ -31,61 +40,139 @@ interface Lead {
 export default function AdminLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'new' | 'contacted' | 'converted' | 'lost'>('all');
 
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editStatus, setEditStatus] = useState<'new' | 'contacted' | 'converted' | 'lost'>('new');
+  const [editNotes, setEditNotes] = useState('');
+
+  const supabase = createClient();
+
   useEffect(() => {
-    async function fetchLeads() {
-      try {
-        const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) throw new Error('Not authenticated');
-
-        const { data, error } = await supabase
-          .from('leads')
-          .select('*, ambassadors(id, ambassador_tag, users(name))')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        const formatted: Lead[] = (data || []).map((l: any) => ({
-          id: l.id,
-          ambassador_id: l.ambassador_id,
-          ambassador_name: l.ambassadors?.users?.name || 'Unknown',
-          ambassador_tag: l.ambassadors?.ambassador_tag || '',
-          source: l.source,
-          customer_name: l.customer_name,
-          customer_phone: l.customer_phone,
-          customer_email: l.customer_email,
-          referral_code_used: l.referral_code_used,
-          status: l.status,
-          notes: l.notes,
-          created_at: l.created_at,
-        }));
-
-        setLeads(formatted);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchLeads();
   }, []);
 
-  const filteredLeads = leads.filter(lead => {
-    const matchesSearch = lead.customer_phone.includes(search) || 
-                         lead.ambassador_name.toLowerCase().includes(search.toLowerCase()) ||
-                         (lead.customer_name?.toLowerCase().includes(search.toLowerCase()) || false);
+  async function fetchLeads() {
+    try {
+      setLoading(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*, ambassadors(id, ambassador_tag, users(name))')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const formatted: Lead[] = (data || []).map((l: any) => ({
+        id: l.id,
+        ambassador_id: l.ambassador_id,
+        ambassador_name: l.ambassadors?.users?.name || 'Unknown',
+        ambassador_tag: l.ambassadors?.ambassador_tag || '',
+        source: l.source,
+        customer_name: l.customer_name,
+        customer_phone: l.customer_phone,
+        customer_email: l.customer_email,
+        referral_code_used: l.referral_code_used,
+        status: l.status,
+        notes: l.notes,
+        created_at: l.created_at,
+      }));
+
+      setLeads(formatted);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openEditModal(lead: Lead) {
+    setEditingLead(lead);
+    setEditName(lead.customer_name || '');
+    setEditPhone(lead.customer_phone || '');
+    setEditEmail(lead.customer_email || '');
+    setEditStatus(lead.status || 'new');
+    setEditNotes(lead.notes || '');
+  }
+
+  function closeEditModal() {
+    setEditingLead(null);
+    setEditName('');
+    setEditPhone('');
+    setEditEmail('');
+    setEditStatus('new');
+    setEditNotes('');
+  }
+
+  async function saveLeadUpdate() {
+    if (!editingLead) return;
+
+    if (!editPhone.trim()) {
+      alert('Phone number is required.');
+      return;
+    }
+
+    setSaving(true);
+
+    const { error } = await supabase
+      .from('leads')
+      .update({
+        customer_name: editName.trim() || null,
+        customer_phone: editPhone.trim(),
+        customer_email: editEmail.trim() || null,
+        status: editStatus,
+        notes: editNotes.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', editingLead.id);
+
+    setSaving(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await fetchLeads();
+    closeEditModal();
+  }
+
+  const filteredLeads = leads.filter((lead) => {
+    const matchesSearch =
+      lead.customer_phone.toLowerCase().includes(search.toLowerCase()) ||
+      lead.ambassador_name.toLowerCase().includes(search.toLowerCase()) ||
+      lead.ambassador_tag.toLowerCase().includes(search.toLowerCase()) ||
+      lead.source.toLowerCase().includes(search.toLowerCase()) ||
+      (lead.customer_name?.toLowerCase().includes(search.toLowerCase()) || false) ||
+      (lead.customer_email?.toLowerCase().includes(search.toLowerCase()) || false);
+
     const matchesFilter = filter === 'all' || lead.status === filter;
+
     return matchesSearch && matchesFilter;
   });
 
   const totalLeads = leads.length;
-  const newLeads = leads.filter(l => l.status === 'new').length;
-  const convertedLeads = leads.filter(l => l.status === 'converted').length;
+  const newLeads = leads.filter((l) => l.status === 'new').length;
+  const convertedLeads = leads.filter((l) => l.status === 'converted').length;
+
+  const statusConfig: Record<string, { color: string; label: string }> = {
+    new: { color: 'bg-blue-100 text-blue-700', label: 'New' },
+    contacted: { color: 'bg-amber-100 text-amber-700', label: 'Contacted' },
+    converted: { color: 'bg-emerald-100 text-emerald-700', label: 'Converted' },
+    lost: { color: 'bg-red-100 text-red-700', label: 'Lost' },
+  };
 
   if (loading) {
     return (
@@ -108,13 +195,6 @@ export default function AdminLeadsPage() {
     );
   }
 
-  const statusConfig: Record<string, { color: string; label: string }> = {
-    new: { color: 'bg-blue-100 text-blue-700', label: 'New' },
-    contacted: { color: 'bg-amber-100 text-amber-700', label: 'Contacted' },
-    converted: { color: 'bg-emerald-100 text-emerald-700', label: 'Converted' },
-    lost: { color: 'bg-red-100 text-red-700', label: 'Lost' },
-  };
-
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-4">
@@ -124,7 +204,9 @@ export default function AdminLeadsPage() {
             Back
           </Button>
         </Link>
+
         <div className="h-6 w-px bg-slate-200" />
+
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <span>Admin</span>
           <ChevronRight className="w-4 h-4" />
@@ -134,7 +216,9 @@ export default function AdminLeadsPage() {
 
       <div>
         <h1 className="text-3xl font-bold text-slate-900">Lead Management</h1>
-        <p className="text-slate-500 mt-1">Track and update all ambassador leads</p>
+        <p className="text-slate-500 mt-1">
+          Track, edit and update all ambassador leads.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -151,6 +235,7 @@ export default function AdminLeadsPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card className="border border-slate-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -164,6 +249,7 @@ export default function AdminLeadsPage() {
             </div>
           </CardContent>
         </Card>
+
         <Card className="border border-slate-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -189,7 +275,8 @@ export default function AdminLeadsPage() {
             className="pl-9 border-slate-200"
           />
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex gap-2 flex-wrap">
           {(['all', 'new', 'contacted', 'converted', 'lost'] as const).map((f) => (
             <Button
               key={f}
@@ -218,55 +305,95 @@ export default function AdminLeadsPage() {
                   <th className="text-left py-4 px-6 text-sm font-semibold text-slate-600">Actions</th>
                 </tr>
               </thead>
+
               <tbody>
                 {filteredLeads.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-16 text-center">
                       <Inbox className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                       <p className="text-slate-500 text-lg">No leads found</p>
-                      <p className="text-sm text-slate-400 mt-1">Leads will appear here when ambassadors generate them</p>
+                      <p className="text-sm text-slate-400 mt-1">
+                        Leads will appear here when ambassadors generate them.
+                      </p>
                     </td>
                   </tr>
                 ) : (
                   filteredLeads.map((lead) => {
-                    const status = statusConfig[lead.status];
+                    const status = statusConfig[lead.status] || statusConfig.new;
+
                     return (
-                      <tr key={lead.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                      <tr
+                        key={lead.id}
+                        className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors"
+                      >
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
                               <Phone className="w-4 h-4 text-white" />
                             </div>
+
                             <div>
-                              <span className="font-medium text-slate-900 text-sm">{lead.customer_name || lead.customer_phone}</span>
-                              {lead.customer_email && <p className="text-xs text-slate-500">{lead.customer_email}</p>}
+                              <span className="font-medium text-slate-900 text-sm">
+                                {lead.customer_name || lead.customer_phone}
+                              </span>
+
+                              <p className="text-xs text-slate-500">
+                                {lead.customer_phone}
+                              </p>
+
+                              {lead.customer_email && (
+                                <p className="text-xs text-slate-500">
+                                  {lead.customer_email}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </td>
+
                         <td className="py-4 px-6">
                           <div>
-                            <span className="text-sm font-medium text-slate-700">{lead.ambassador_name}</span>
+                            <span className="text-sm font-medium text-slate-700">
+                              {lead.ambassador_name}
+                            </span>
                             <p className="text-xs text-slate-500">{lead.ambassador_tag}</p>
                           </div>
                         </td>
+
                         <td className="py-4 px-6">
-                          <span className="text-sm text-slate-700">{lead.source}</span>
-                          {lead.referral_code_used && <p className="text-xs text-slate-500">Ref: {lead.referral_code_used}</p>}
+                          <span className="text-sm text-slate-700 capitalize">
+                            {lead.source}
+                          </span>
+                          {lead.referral_code_used && (
+                            <p className="text-xs text-slate-500">
+                              Ref: {lead.referral_code_used}
+                            </p>
+                          )}
                         </td>
+
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-2 text-sm text-slate-500">
                             <Calendar className="w-4 h-4" />
                             {formatDate(lead.created_at)}
                           </div>
                         </td>
+
                         <td className="py-4 px-6">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.color}`}>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.color}`}
+                          >
                             {status.label}
                           </span>
                         </td>
+
                         <td className="py-4 px-6">
-                          <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50">
-                            Update <ArrowRight className="w-3 h-3 ml-1" />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+                            onClick={() => openEditModal(lead)}
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            Edit
                           </Button>
                         </td>
                       </tr>
@@ -278,6 +405,97 @@ export default function AdminLeadsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {editingLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="w-full max-w-xl rounded-2xl">
+            <CardContent className="p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Edit Lead</h2>
+                  <p className="text-sm text-slate-500">
+                    Update customer details after WhatsApp conversation.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  className="rounded-full p-2 hover:bg-slate-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Customer Name</label>
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Customer name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Phone Number</label>
+                  <Input
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    placeholder="+234..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Email</label>
+                  <Input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="customer@example.com"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as Lead['status'])}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-emmy-primary"
+                  >
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="converted">Converted</option>
+                    <option value="lost">Lost</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Notes</label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Add notes about this lead..."
+                  rows={4}
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-emmy-primary"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="ghost" onClick={closeEditModal}>
+                  Cancel
+                </Button>
+
+                <Button onClick={saveLeadUpdate} disabled={saving} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
