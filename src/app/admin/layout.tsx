@@ -9,7 +9,10 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     redirect('/auth/login');
@@ -23,17 +26,18 @@ export default async function AdminLayout({
 
   const role = profile?.role || 'ambassador';
 
-  // Redirect non-admins to dashboard
   if (role !== 'admin') {
     redirect('/dashboard');
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50">
       <DashboardSidebar role={role} user={user} />
-      <div className="flex-1 flex flex-col ml-64">
+
+      <div className="flex min-h-screen flex-col lg:ml-64">
         <DashboardHeader user={user} profile={profile} />
-        <main className="flex-1 p-6 overflow-auto">
+
+        <main className="flex-1 overflow-auto p-4 sm:p-5 lg:p-6">
           {children}
         </main>
       </div>

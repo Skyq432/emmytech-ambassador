@@ -26,34 +26,36 @@ export default async function DashboardLayout({
 
   const role = profile?.role || 'ambassador';
 
-    if (role === 'ambassador') {
-      const { data: ambassador } = await supabase
-        .from('ambassadors')
-        .select('status')
-        .eq('user_id', user.id)
-        .maybeSingle();
+  if (role === 'ambassador') {
+    const { data: ambassador } = await supabase
+      .from('ambassadors')
+      .select('status')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-      if (!ambassador) {
-    redirect('/auth/login');
-  }
+    if (!ambassador) {
+      redirect('/auth/login');
+    }
 
-  if (ambassador.status === 'suspended') {
-    redirect('/account-suspended');
-  }
+    if (ambassador.status === 'suspended') {
+      redirect('/account-suspended');
+    }
 
-  if (ambassador.status === 'deleted') {
-    redirect('/auth/login');
-  }
+    if (ambassador.status === 'deleted') {
+      redirect('/auth/login');
+    }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50">
       <DashboardSidebar role={role} user={user} />
 
-      <div className="flex-1 flex flex-col ml-64">
+      <div className="flex min-h-screen flex-col lg:ml-64">
         <DashboardHeader user={user} profile={profile} />
 
-        <main className="flex-1 p-6 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-auto p-4 sm:p-5 lg:p-6">
+          {children}
+        </main>
       </div>
     </div>
   );
