@@ -19,7 +19,9 @@ import {
   ChevronRight,
   Menu,
   X,
+  Package,
 } from 'lucide-react';
+
 
 const adminNav = [
   { label: 'Overview', href: '/admin', icon: LayoutDashboard },
@@ -29,6 +31,7 @@ const adminNav = [
   { label: 'Conversions', href: '/admin/conversions', icon: BarChart3 },
   { label: 'Invite', href: '/admin/invite', icon: Link2 },
   { label: 'Settings', href: '/admin/settings', icon: Settings },
+  { label: 'Products', href: '/admin/products', icon: Package },
 ];
 
 const ambassadorNav = [
