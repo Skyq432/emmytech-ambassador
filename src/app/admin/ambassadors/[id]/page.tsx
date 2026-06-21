@@ -22,6 +22,7 @@ import {
   Award,
   Shield,
   Activity,
+  AlertTriangle,
 } from 'lucide-react';
 import { formatDate, formatCurrency, formatNumber } from '@/lib/utils';
 
@@ -119,15 +120,20 @@ export default function AmbassadorDetailPage() {
 
   useEffect(() => {
     if (ambassadorId) fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ambassadorId]);
 
   const fetchData = async () => {
+    setLoading(true);
+
     try {
-      const { data: ambData } = await supabase
+      const { data: ambData, error: ambError } = await supabase
         .from('ambassadors')
         .select('*, users(name, email, avatar_url, created_at)')
         .eq('id', ambassadorId)
-        .single();
+        .maybeSingle();
+
+      if (ambError) throw ambError;
 
       if (ambData) {
         setAmbassador({
@@ -137,6 +143,8 @@ export default function AmbassadorDetailPage() {
           avatar_url: ambData.users?.avatar_url,
           created_at: ambData.users?.created_at,
         });
+      } else {
+        setAmbassador(null);
       }
 
       const { data: leadsData } = await supabase
@@ -177,41 +185,94 @@ export default function AmbassadorDetailPage() {
     }
   };
 
-  const updateAmbassadorStatus = async (
-    newStatus: 'active' | 'suspended' | 'deleted'
-  ) => {
+  const updateAmbassadorStatus = async (newStatus: 'active' | 'suspended') => {
     if (!ambassador) return;
 
     const confirmed = window.confirm(
-      newStatus === 'deleted'
-        ? 'Are you sure you want to delete this ambassador?'
-        : newStatus === 'suspended'
-          ? 'Are you sure you want to pause this ambassador?'
-          : 'Are you sure you want to reactivate this ambassador?'
+      newStatus === 'suspended'
+        ? 'Pause this ambassador? They will not be able to continue as active until reactivated.'
+        : 'Reactivate this ambassador?'
     );
 
     if (!confirmed) return;
 
     setActionLoading(true);
 
-    const { error } = await supabase
-      .from('ambassadors')
-      .update({ status: newStatus })
-      .eq('id', ambassador.id);
+    try {
+      const { error } = await supabase
+        .from('ambassadors')
+        .update({ status: newStatus })
+        .eq('id', ambassador.id);
 
-    if (error) {
-      alert(error.message);
+      if (error) throw error;
+
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || 'Unable to update ambassador status.');
+    } finally {
       setActionLoading(false);
-      return;
     }
+  };
 
-    if (newStatus === 'deleted') {
+  const softDeleteAmbassador = async () => {
+    if (!ambassador) return;
+
+    const confirmed = window.confirm(
+      'SOFT DELETE\n\nThis will hide this ambassador from the active ambassador list and stop them from using the dashboard, but their leads, points, conversions, payout history and referral history will remain in the database.\n\nYou can restore them later by changing their status back to active.\n\nContinue?'
+    );
+
+    if (!confirmed) return;
+
+    setActionLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('ambassadors')
+        .update({ status: 'deleted' })
+        .eq('id', ambassador.id);
+
+      if (error) throw error;
+
+      alert('Ambassador soft deleted.');
       router.push('/admin/ambassadors');
-      return;
+    } catch (err: any) {
+      alert(err.message || 'Unable to soft delete ambassador.');
+    } finally {
+      setActionLoading(false);
     }
+  };
 
-    await fetchData();
-    setActionLoading(false);
+  const hardDeleteAmbassador = async () => {
+    if (!ambassador) return;
+
+    const confirmed = window.confirm(
+      '⚠️ HARD DELETE\n\nThis will permanently delete this ambassador and ALL related data including:\n\n• Leads\n• Activities\n• Conversions\n• Payouts\n• Referral Clicks\n• Visitor Sessions\n• Product Views\n• Cart Events\n\nThis cannot be undone.\n\nOnly continue if you want this ambassador to start from zero if they register again.'
+    );
+
+    if (!confirmed) return;
+
+    const finalConfirm = window.confirm(
+      'Final confirmation: permanently erase this ambassador and all related records?'
+    );
+
+    if (!finalConfirm) return;
+
+    setActionLoading(true);
+
+    try {
+      const { error } = await supabase.rpc('hard_delete_ambassador', {
+        p_ambassador_id: ambassador.id,
+      });
+
+      if (error) throw error;
+
+      alert('Ambassador permanently deleted.');
+      router.push('/admin/ambassadors');
+    } catch (err: any) {
+      alert(err.message || 'Unable to hard delete ambassador.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleAddLead = async () => {
@@ -495,16 +556,41 @@ export default function AmbassadorDetailPage() {
                 </Button>
               )}
 
-              <Button
-                type="button"
-                variant="danger"
-                disabled={actionLoading}
-                onClick={() => updateAmbassadorStatus('deleted')}
-                className="w-full gap-2 rounded-xl"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete Ambassador
-              </Button>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="mb-2 flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Delete options</p>
+                    <p className="text-xs text-amber-700">
+                      Soft delete hides the ambassador. Hard delete permanently erases the ambassador and all linked data.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={actionLoading}
+                    onClick={softDeleteAmbassador}
+                    className="w-full gap-2 rounded-xl border-amber-300 text-amber-700 hover:bg-amber-100"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Soft Delete Ambassador
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="danger"
+                    disabled={actionLoading}
+                    onClick={hardDeleteAmbassador}
+                    className="w-full gap-2 rounded-xl"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Hard Delete Permanently
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
