@@ -5,10 +5,19 @@ import { createClient } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
-  Users, TrendingUp, MessageCircle, Share2,
-  CheckCircle, Clock, ArrowLeft, ArrowUpRight,
-  BarChart3, DollarSign, Activity, ChevronRight
+import {
+  Users,
+  TrendingUp,
+  MessageCircle,
+  Share2,
+  CheckCircle,
+  Clock,
+  ArrowLeft,
+  ArrowUpRight,
+  BarChart3,
+  DollarSign,
+  Activity,
+  ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate, formatNumber, formatCurrency } from '@/lib/utils';
@@ -52,6 +61,7 @@ export default function AdminOverview() {
     totalConversions: 0,
     totalRevenue: 0,
   });
+
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [topAmbassadors, setTopAmbassadors] = useState<TopAmbassador[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,30 +71,89 @@ export default function AdminOverview() {
     async function fetchAdminData() {
       try {
         const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
         if (!session?.user) throw new Error('Not authenticated');
 
-        // Fetch stats
-        const { data: ambassadorsData } = await supabase
+        /*
+          IMPORTANT RULE:
+          - Soft deleted ambassadors have status = "deleted".
+          - Admin overview should not count or rank deleted ambassadors.
+          - Business history can still remain in Leads/Conversions pages,
+            but this dashboard should show current operational data only.
+        */
+
+        // Fetch ambassadors excluding soft-deleted records
+        const { data: ambassadorsData, error: ambassadorsError } = await supabase
           .from('ambassadors')
-          .select('status');
+          .select('id, status')
+          .neq('status', 'deleted');
 
-        const activeCount = ambassadorsData?.filter(a => a.status === 'active').length || 0;
+        if (ambassadorsError) throw ambassadorsError;
 
-        const { data: pendingActivities } = await supabase
+        const activeCount =
+          ambassadorsData?.filter((a) => a.status === 'active').length || 0;
+
+        // Pending activities only from non-deleted ambassadors
+        const { data: pendingActivities, error: pendingError } = await supabase
           .from('activities')
-          .select('*', { count: 'exact' })
-          .eq('status', 'pending_review');
+          .select(
+            `
+              id,
+              status,
+              ambassadors!inner (
+                id,
+                status
+              )
+            `,
+            { count: 'exact' }
+          )
+          .eq('status', 'pending_review')
+          .neq('ambassadors.status', 'deleted');
 
-        const { data: leadsData } = await supabase
+        if (pendingError) throw pendingError;
+
+        // Leads only from non-deleted ambassadors for dashboard summary
+        const { data: leadsData, error: leadsError } = await supabase
           .from('leads')
-          .select('*', { count: 'exact' });
+          .select(
+            `
+              id,
+              ambassadors!inner (
+                id,
+                status
+              )
+            `,
+            { count: 'exact' }
+          )
+          .neq('ambassadors.status', 'deleted');
 
-        const { data: conversionsData } = await supabase
+        if (leadsError) throw leadsError;
+
+        // Conversions only from non-deleted ambassadors for dashboard summary
+        const { data: conversionsData, error: conversionsError } = await supabase
           .from('conversions')
-          .select('amount');
+          .select(
+            `
+              id,
+              amount,
+              ambassadors!inner (
+                id,
+                status
+              )
+            `
+          )
+          .neq('ambassadors.status', 'deleted');
 
-        const totalRevenue = conversionsData?.reduce((sum, c) => sum + (c.amount || 0), 0) || 0;
+        if (conversionsError) throw conversionsError;
+
+        const totalRevenue =
+          conversionsData?.reduce((sum, conversion: any) => {
+            return sum + Number(conversion.amount || 0);
+          }, 0) || 0;
 
         setStats({
           totalAmbassadors: ambassadorsData?.length || 0,
@@ -95,44 +164,80 @@ export default function AdminOverview() {
           totalRevenue,
         });
 
-        // Fetch recent activity
-        const { data: recentActivities } = await supabase
+        // Recent activity from non-deleted ambassadors only
+        const { data: recentActivities, error: recentError } = await supabase
           .from('activities')
-          .select('*, ambassadors(ambassador_tag, users(name))')
+          .select(
+            `
+              id,
+              platform,
+              submitted_at,
+              status,
+              ambassadors!inner (
+                ambassador_tag,
+                status,
+                users (
+                  name
+                )
+              )
+            `
+          )
+          .neq('ambassadors.status', 'deleted')
           .order('submitted_at', { ascending: false })
           .limit(5);
 
-        const formattedActivity: RecentActivity[] = (recentActivities || []).map((a: any) => ({
-          id: a.id,
-          type: 'post',
-          ambassador_name: a.ambassadors?.users?.name || 'Unknown',
-          ambassador_tag: a.ambassadors?.ambassador_tag || '',
-          platform: a.platform,
-          created_at: a.submitted_at,
-          status: a.status,
-        }));
+        if (recentError) throw recentError;
+
+        const formattedActivity: RecentActivity[] = (recentActivities || []).map(
+          (activity: any) => ({
+            id: activity.id,
+            type: 'post',
+            ambassador_name: activity.ambassadors?.users?.name || 'Unknown',
+            ambassador_tag: activity.ambassadors?.ambassador_tag || '',
+            platform: activity.platform,
+            created_at: activity.submitted_at,
+            status: activity.status,
+          })
+        );
 
         setRecentActivity(formattedActivity);
 
-        // Fetch top ambassadors
-        const { data: topAmbassadorsData } = await supabase
+        // Top performers should be active ambassadors only
+        const { data: topAmbassadorsData, error: topError } = await supabase
           .from('ambassadors')
-          .select('*, users(name)')
+          .select(
+            `
+              id,
+              ambassador_tag,
+              total_points,
+              total_leads,
+              total_conversions,
+              status,
+              users (
+                name
+              )
+            `
+          )
+          .eq('status', 'active')
           .order('total_points', { ascending: false })
           .limit(5);
 
-        const formattedTop: TopAmbassador[] = (topAmbassadorsData || []).map((a: any, index: number) => ({
-          rank: index + 1,
-          name: a.users?.name || 'Unknown',
-          tag: a.ambassador_tag,
-          total_points: a.total_points || 0,
-          total_leads: a.total_leads || 0,
-          total_conversions: a.total_conversions || 0,
-        }));
+        if (topError) throw topError;
+
+        const formattedTop: TopAmbassador[] = (topAmbassadorsData || []).map(
+          (ambassador: any, index: number) => ({
+            rank: index + 1,
+            name: ambassador.users?.name || 'Unknown',
+            tag: ambassador.ambassador_tag,
+            total_points: ambassador.total_points || 0,
+            total_leads: ambassador.total_leads || 0,
+            total_conversions: ambassador.total_conversions || 0,
+          })
+        );
 
         setTopAmbassadors(formattedTop);
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || 'Unable to load admin dashboard.');
       } finally {
         setLoading(false);
       }
@@ -144,10 +249,13 @@ export default function AdminOverview() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-64 bg-slate-200/50 rounded animate-pulse" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-slate-200/50 rounded-xl animate-pulse" />
+        <div className="h-8 w-64 animate-pulse rounded bg-slate-200/50" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((item) => (
+            <div
+              key={item}
+              className="h-32 animate-pulse rounded-xl bg-slate-200/50"
+            />
           ))}
         </div>
       </div>
@@ -156,17 +264,45 @@ export default function AdminOverview() {
 
   if (error) {
     return (
-      <div className="p-4 border border-red-200/50 bg-red-50/50 rounded-xl">
+      <div className="rounded-xl border border-red-200/50 bg-red-50/50 p-4">
         <p className="text-red-600">Error: {error}</p>
       </div>
     );
   }
 
   const statCards = [
-    { label: 'Total Ambassadors', value: stats.totalAmbassadors.toString(), sub: `${stats.activeAmbassadors} active`, icon: Users, color: 'bg-blue-500', href: '/admin/ambassadors' },
-    { label: 'Pending Approvals', value: stats.pendingApprovals.toString(), sub: 'Needs review', icon: Clock, color: 'bg-amber-500', href: '/admin/activities' },
-    { label: 'Total Leads', value: formatNumber(stats.totalLeads), sub: 'All time', icon: MessageCircle, color: 'bg-emerald-500', href: '/admin/leads' },
-    { label: 'Revenue', value: formatCurrency(stats.totalRevenue), sub: `${stats.totalConversions} conversions`, icon: TrendingUp, color: 'bg-violet-500', href: '/admin/conversions' },
+    {
+      label: 'Total Ambassadors',
+      value: stats.totalAmbassadors.toString(),
+      sub: `${stats.activeAmbassadors} active`,
+      icon: Users,
+      color: 'bg-blue-500',
+      href: '/admin/ambassadors',
+    },
+    {
+      label: 'Pending Approvals',
+      value: stats.pendingApprovals.toString(),
+      sub: 'Needs review',
+      icon: Clock,
+      color: 'bg-amber-500',
+      href: '/admin/activities',
+    },
+    {
+      label: 'Total Leads',
+      value: formatNumber(stats.totalLeads),
+      sub: 'Active ambassadors',
+      icon: MessageCircle,
+      color: 'bg-emerald-500',
+      href: '/admin/leads',
+    },
+    {
+      label: 'Revenue',
+      value: formatCurrency(stats.totalRevenue),
+      sub: `${stats.totalConversions} conversions`,
+      icon: TrendingUp,
+      color: 'bg-violet-500',
+      href: '/admin/conversions',
+    },
   ];
 
   return (
@@ -174,46 +310,63 @@ export default function AdminOverview() {
       {/* Header with back button */}
       <div className="flex items-center gap-4">
         <Link href="/dashboard">
-          <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-900">
-            <ArrowLeft className="w-4 h-4 mr-1" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-slate-500 hover:text-slate-900"
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
             Back
           </Button>
         </Link>
+
         <div className="h-6 w-px bg-slate-200" />
+
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <span>Dashboard</span>
-          <ChevronRight className="w-4 h-4" />
-          <span className="text-slate-900 font-medium">Admin</span>
+          <ChevronRight className="h-4 w-4" />
+          <span className="font-medium text-slate-900">Admin</span>
         </div>
       </div>
 
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Command Center</h1>
-          <p className="text-slate-500 mt-1">Manage ambassadors, track leads, and monitor performance</p>
+          <p className="mt-1 text-slate-500">
+            Manage ambassadors, track leads, and monitor performance.
+          </p>
         </div>
-        <Badge className="px-4 py-2 bg-slate-900 text-white border-0">
-          <Activity className="w-4 h-4 mr-2" />
+
+        <Badge className="border-0 bg-slate-900 px-4 py-2 text-white">
+          <Activity className="mr-2 h-4 w-4" />
           Administrator
         </Badge>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => {
           const Icon = stat.icon;
+
           return (
             <Link key={stat.label} href={stat.href}>
-              <Card className="border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200 cursor-pointer">
+              <Card className="cursor-pointer border border-slate-200 shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md">
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-medium text-slate-600">{stat.label}</p>
-                      <p className="text-3xl font-bold text-slate-900 mt-2">{stat.value}</p>
-                      <p className="text-xs text-slate-400 mt-1">{stat.sub}</p>
+                      <p className="text-sm font-medium text-slate-600">
+                        {stat.label}
+                      </p>
+                      <p className="mt-2 text-3xl font-bold text-slate-900">
+                        {stat.value}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">{stat.sub}</p>
                     </div>
-                    <div className={`w-12 h-12 rounded-xl ${stat.color} flex items-center justify-center`}>
-                      <Icon className="w-6 h-6 text-white" />
+
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center rounded-xl ${stat.color}`}
+                    >
+                      <Icon className="h-6 w-6 text-white" />
                     </div>
                   </div>
                 </CardContent>
@@ -223,63 +376,119 @@ export default function AdminOverview() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Recent Activity */}
-        <Card className="lg:col-span-2 border border-slate-200 shadow-sm">
+        <Card className="border border-slate-200 shadow-sm lg:col-span-2">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-slate-900">Recent Activity</h3>
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Recent Activity
+              </h3>
+
               <Link href="/admin/activities">
-                <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700">
-                  View All <ArrowUpRight className="w-4 h-4 ml-1" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-blue-600 hover:text-blue-700"
+                >
+                  View All <ArrowUpRight className="ml-1 h-4 w-4" />
                 </Button>
               </Link>
             </div>
+
             <div className="space-y-3">
               {recentActivity.length === 0 ? (
-                <div className="text-center py-12">
-                  <Activity className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <div className="py-12 text-center">
+                  <Activity className="mx-auto mb-3 h-12 w-12 text-slate-300" />
                   <p className="text-slate-500">No recent activity</p>
                 </div>
               ) : (
                 recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      activity.type === 'signup' ? 'bg-blue-100 text-blue-700' :
-                      activity.type === 'post' ? 'bg-blue-500 text-white' :
-                      activity.type === 'conversion' ? 'bg-emerald-500 text-white' :
-                      'bg-violet-500 text-white'
-                    }`}>
-                      {activity.type === 'signup' && <Users className="w-5 h-5" />}
-                      {activity.type === 'post' && <Share2 className="w-5 h-5" />}
-                      {activity.type === 'conversion' && <DollarSign className="w-5 h-5" />}
-                      {activity.type === 'lead' && <MessageCircle className="w-5 h-5" />}
+                  <div
+                    key={activity.id}
+                    className="flex items-center gap-4 rounded-lg bg-slate-50 p-4 transition-colors hover:bg-slate-100"
+                  >
+                    <div
+                      className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${
+                        activity.type === 'signup'
+                          ? 'bg-blue-100 text-blue-700'
+                          : activity.type === 'post'
+                            ? 'bg-blue-500 text-white'
+                            : activity.type === 'conversion'
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-violet-500 text-white'
+                      }`}
+                    >
+                      {activity.type === 'signup' && (
+                        <Users className="h-5 w-5" />
+                      )}
+                      {activity.type === 'post' && (
+                        <Share2 className="h-5 w-5" />
+                      )}
+                      {activity.type === 'conversion' && (
+                        <DollarSign className="h-5 w-5" />
+                      )}
+                      {activity.type === 'lead' && (
+                        <MessageCircle className="h-5 w-5" />
+                      )}
                     </div>
-                    <div className="flex-1 min-w-0">
+
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-slate-900 text-sm">
+                        <span className="text-sm font-medium text-slate-900">
                           {activity.type === 'signup' && 'New Ambassador Signup'}
-                          {activity.type === 'post' && `Post from ${activity.ambassador_name}`}
-                          {activity.type === 'conversion' && `Conversion: ${activity.ambassador_name}`}
-                          {activity.type === 'lead' && `New Lead: ${activity.ambassador_name}`}
+                          {activity.type === 'post' &&
+                            `Post from ${activity.ambassador_name}`}
+                          {activity.type === 'conversion' &&
+                            `Conversion: ${activity.ambassador_name}`}
+                          {activity.type === 'lead' &&
+                            `New Lead: ${activity.ambassador_name}`}
                         </span>
-                        <Badge variant={
-                          activity.status === 'approved' ? 'success' : 
-                          activity.status === 'pending_review' ? 'warning' : 
-                          'default'
-                        } className="text-xs">{activity.status === 'pending_review' ? 'Pending' : activity.status}</Badge>
+
+                        <Badge
+                          variant={
+                            activity.status === 'approved'
+                              ? 'success'
+                              : activity.status === 'pending_review'
+                                ? 'warning'
+                                : 'default'
+                          }
+                          className="text-xs"
+                        >
+                          {activity.status === 'pending_review'
+                            ? 'Pending'
+                            : activity.status}
+                        </Badge>
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
-                        <span>{activity.platform || activity.source || activity.ambassador_tag}</span>
+
+                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                        <span>
+                          {activity.platform ||
+                            activity.source ||
+                            activity.ambassador_tag}
+                        </span>
                         <span>•</span>
                         <span>{formatDate(activity.created_at)}</span>
-                        {activity.amount && <><span>•</span><span className="text-emerald-600 font-medium">{formatCurrency(activity.amount)}</span></>}
+
+                        {activity.amount && (
+                          <>
+                            <span>•</span>
+                            <span className="font-medium text-emerald-600">
+                              {formatCurrency(activity.amount)}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
+
                     {activity.status === 'pending_review' && (
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="text-emerald-600 hover:bg-emerald-50 border-emerald-200">
-                          <CheckCircle className="w-4 h-4" />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                        >
+                          <CheckCircle className="h-4 w-4" />
                         </Button>
                       </div>
                     )}
@@ -293,38 +502,59 @@ export default function AdminOverview() {
         {/* Top Ambassadors */}
         <Card className="border border-slate-200 shadow-sm">
           <CardContent className="p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-6">Top Performers</h3>
+            <h3 className="mb-6 text-lg font-semibold text-slate-900">
+              Top Performers
+            </h3>
+
             <div className="space-y-3">
               {topAmbassadors.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-500">No ambassadors yet</p>
+                <div className="py-12 text-center">
+                  <Users className="mx-auto mb-3 h-12 w-12 text-slate-300" />
+                  <p className="text-slate-500">No active ambassadors yet</p>
                 </div>
               ) : (
                 topAmbassadors.map((ambassador) => (
-                  <div key={ambassador.rank} className="flex items-center gap-3 p-4 rounded-lg bg-slate-50">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                      ambassador.rank === 1 ? 'bg-amber-400 text-white' :
-                      ambassador.rank === 2 ? 'bg-slate-400 text-white' :
-                      ambassador.rank === 3 ? 'bg-orange-400 text-white' :
-                      'bg-slate-200 text-slate-600'
-                    }`}>
+                  <div
+                    key={`${ambassador.rank}-${ambassador.tag}`}
+                    className="flex items-center gap-3 rounded-lg bg-slate-50 p-4"
+                  >
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+                        ambassador.rank === 1
+                          ? 'bg-amber-400 text-white'
+                          : ambassador.rank === 2
+                            ? 'bg-slate-400 text-white'
+                            : ambassador.rank === 3
+                              ? 'bg-orange-400 text-white'
+                              : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
                       {ambassador.rank}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 text-sm truncate">{ambassador.name}</p>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-900">
+                        {ambassador.name}
+                      </p>
                       <p className="text-xs text-slate-500">{ambassador.tag}</p>
                     </div>
+
                     <div className="text-right">
-                      <p className="font-bold text-blue-600 text-sm">{formatNumber(ambassador.total_points)}</p>
+                      <p className="text-sm font-bold text-blue-600">
+                        {formatNumber(ambassador.total_points)}
+                      </p>
                       <p className="text-xs text-slate-400">pts</p>
                     </div>
                   </div>
                 ))
               )}
             </div>
+
             <Link href="/dashboard/leaderboard">
-              <Button variant="outline" className="w-full mt-4 text-sm border-slate-200 hover:bg-slate-50">
+              <Button
+                variant="outline"
+                className="mt-4 w-full border-slate-200 text-sm hover:bg-slate-50"
+              >
                 View Full Leaderboard
               </Button>
             </Link>
@@ -333,42 +563,57 @@ export default function AdminOverview() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Link href="/admin/ambassadors">
-          <Card className="border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer p-6">
+          <Card className="cursor-pointer border border-slate-200 p-6 shadow-sm transition-all hover:border-slate-300 hover:shadow-md">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center">
-                <Users className="w-6 h-6 text-white" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500">
+                <Users className="h-6 w-6 text-white" />
               </div>
+
               <div>
-                <h3 className="font-semibold text-slate-900">Manage Ambassadors</h3>
-                <p className="text-sm text-slate-500">Add, edit, or suspend ambassadors</p>
+                <h3 className="font-semibold text-slate-900">
+                  Manage Ambassadors
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Add, edit, suspend, or delete ambassadors
+                </p>
               </div>
             </div>
           </Card>
         </Link>
+
         <Link href="/admin/activities">
-          <Card className="border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer p-6">
+          <Card className="cursor-pointer border border-slate-200 p-6 shadow-sm transition-all hover:border-slate-300 hover:shadow-md">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-white" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500">
+                <CheckCircle className="h-6 w-6 text-white" />
               </div>
+
               <div>
-                <h3 className="font-semibold text-slate-900">Review Approvals</h3>
-                <p className="text-sm text-slate-500">Approve posts and conversions</p>
+                <h3 className="font-semibold text-slate-900">
+                  Review Approvals
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Approve posts and conversions
+                </p>
               </div>
             </div>
           </Card>
         </Link>
+
         <Link href="/admin/leads">
-          <Card className="border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer p-6">
+          <Card className="cursor-pointer border border-slate-200 p-6 shadow-sm transition-all hover:border-slate-300 hover:shadow-md">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-white" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500">
+                <BarChart3 className="h-6 w-6 text-white" />
               </div>
+
               <div>
                 <h3 className="font-semibold text-slate-900">View Leads</h3>
-                <p className="text-sm text-slate-500">Track all ambassador leads</p>
+                <p className="text-sm text-slate-500">
+                  Track active ambassador leads
+                </p>
               </div>
             </div>
           </Card>
