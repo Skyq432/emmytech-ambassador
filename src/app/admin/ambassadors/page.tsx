@@ -15,6 +15,7 @@ import {
   Users,
   Award,
   ChevronRight,
+  UserX,
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import Link from 'next/link';
@@ -110,12 +111,21 @@ export default function AdminAmbassadorsPage() {
           </p>
         </div>
 
-        <Link href="/admin/invite" className="w-full sm:w-auto">
-          <Button className="w-full gap-2 sm:w-auto">
-            <UserPlus className="h-4 w-4" />
-            Invite New
-          </Button>
-        </Link>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Link href="/admin/ambassadors/deleted" className="w-full sm:w-auto">
+            <Button variant="outline" className="w-full gap-2 sm:w-auto">
+              <UserX className="h-4 w-4" />
+              Deleted Ambassadors
+            </Button>
+          </Link>
+
+          <Link href="/admin/invite" className="w-full sm:w-auto">
+            <Button className="w-full gap-2 sm:w-auto">
+              <UserPlus className="h-4 w-4" />
+              Invite New
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -236,7 +246,10 @@ export default function AdminAmbassadorsPage() {
                     Cashed out: {formatCurrency(amb.total_cashed_out)}
                   </p>
 
-                  <Link href={`/admin/ambassadors/${amb.id}`} className="w-full sm:w-auto">
+                  <Link
+                    href={`/admin/ambassadors/${amb.id}`}
+                    className="w-full sm:w-auto"
+                  >
                     <Button
                       variant="ghost"
                       size="sm"
