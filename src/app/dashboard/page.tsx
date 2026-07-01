@@ -48,11 +48,9 @@ export default function AmbassadorDashboard() {
   const buildReferralLink = (ambData: AmbassadorData) => {
     const code = ambData.custom_referral_code || ambData.referral_code;
 
-    if (typeof window === 'undefined') {
-      return `/r/${code}`;
-    }
+  
 
-    return `${window.location.origin}/r/${code}`;
+    return `https://ambassador.emmytechnology.com/r/${code}`;
   };
 
   const fetchData = async () => {
