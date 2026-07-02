@@ -106,8 +106,9 @@ export default function SubmitActivityPage() {
                 required
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-emmy-primary"
               >
-                <option value="">Select platform</option>
+               <option value="">Select platform</option>
                 <option value="instagram">Instagram</option>
+                <option value="facebook">Facebook</option>
                 <option value="twitter">Twitter / X</option>
                 <option value="tiktok">TikTok</option>
                 <option value="threads">Threads</option>

@@ -46,6 +46,10 @@ interface AmbassadorDetail {
   available_balance: number;
   status: string;
   created_at: string;
+  date_of_birth: string | null;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_account_name: string | null;
 }
 
 interface Lead {
@@ -493,7 +497,15 @@ export default function AmbassadorDetailPage() {
               </CardHeader>
               <CardContent className="grid gap-5 md:grid-cols-2">
                 <Info label="Email" value={ambassador.email} />
-                <Info label="Phone" value={ambassador.whatsapp_number} />
+                <Info label="Phone" value={ambassador.whatsapp_number || 'Not provided'} />
+                <Info
+                  label="Date of Birth"
+                  value={
+                    ambassador.date_of_birth
+                      ? formatDate(ambassador.date_of_birth)
+                      : 'Not provided'
+                  }
+                />
                 <Info label="Referral Code" value={ambassador.referral_code} />
                 <Info label="Custom Code" value={ambassador.custom_referral_code || 'Not set'} />
                 <Info label="Joined" value={formatDate(ambassador.created_at)} />
@@ -509,6 +521,33 @@ export default function AmbassadorDetailPage() {
                 <Summary icon={DollarSign} label="Available" value={formatCurrency(ambassador.available_balance)} />
                 <Summary icon={Send} label="Cashed Out" value={formatCurrency(ambassador.total_cashed_out)} />
                 <Summary icon={Award} label="Total Points" value={formatNumber(ambassador.total_points)} />
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-3xl border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle>Payout Account Details</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-5 md:grid-cols-2">
+                <Info label="Bank Name" value={ambassador.bank_name || 'Not provided'} />
+                <Info
+                  label="Account Number"
+                  value={ambassador.bank_account_number || 'Not provided'}
+                />
+                <Info
+                  label="Account Name"
+                  value={ambassador.bank_account_name || 'Not provided'}
+                />
+                <Info
+                  label="Payout Status"
+                  value={
+                    ambassador.bank_name &&
+                    ambassador.bank_account_number &&
+                    ambassador.bank_account_name
+                      ? 'Complete'
+                      : 'Incomplete'
+                  }
+                />
               </CardContent>
             </Card>
           </div>
@@ -556,39 +595,85 @@ export default function AmbassadorDetailPage() {
                 </Button>
               )}
 
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <div className="mb-2 flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600" />
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-4 flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50">
+                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                  </div>
+
                   <div>
-                    <p className="text-sm font-semibold text-amber-800">Delete options</p>
-                    <p className="text-xs text-amber-700">
-                      Soft delete hides the ambassador. Hard delete permanently erases the ambassador and all linked data.
+                    <p className="text-sm font-semibold text-slate-900">
+                      Delete Options
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Soft delete hides this ambassador while keeping their
+                      records. Hard delete permanently removes the ambassador
+                      and all linked data.
                     </p>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Button
+                <div className="space-y-3">
+                  <button
                     type="button"
-                    variant="outline"
                     disabled={actionLoading}
                     onClick={softDeleteAmbassador}
-                    className="w-full gap-2 rounded-xl border-amber-300 text-amber-700 hover:bg-amber-100"
+                    className="group flex w-full items-center justify-between rounded-xl border border-amber-200 bg-amber-50 p-4 text-left transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <Trash2 className="h-4 w-4" />
-                    Soft Delete Ambassador
-                  </Button>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-amber-700 shadow-sm">
+                        <Trash2 className="h-5 w-5" />
+                      </div>
 
-                  <Button
+                      <div>
+                        <p className="text-sm font-semibold text-amber-900">
+                          Soft Delete Ambassador
+                        </p>
+                        <p className="text-xs leading-5 text-amber-700">
+                          Hide from active list, but keep history and allow
+                          restoration later.
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="ml-3 text-lg font-semibold text-amber-600 transition group-hover:translate-x-1">
+                      →
+                    </span>
+                  </button>
+
+                  <button
                     type="button"
-                    variant="danger"
                     disabled={actionLoading}
                     onClick={hardDeleteAmbassador}
-                    className="w-full gap-2 rounded-xl"
+                    className="group flex w-full items-center justify-between rounded-xl bg-red-600 p-4 text-left text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <Trash2 className="h-4 w-4" />
-                    Hard Delete Permanently
-                  </Button>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/15">
+                        <Trash2 className="h-5 w-5" />
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-semibold">
+                          Hard Delete Permanently
+                        </p>
+                        <p className="text-xs leading-5 text-red-100">
+                          Permanently erase this ambassador and all related
+                          records.
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="ml-3 text-lg font-semibold text-white transition group-hover:translate-x-1">
+                      →
+                    </span>
+                  </button>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3">
+                  <p className="text-xs leading-5 text-blue-700">
+                    Choose carefully. Soft delete can be restored. Hard delete
+                    cannot be undone.
+                  </p>
                 </div>
               </div>
             </CardContent>

@@ -20,8 +20,8 @@ import {
   Menu,
   X,
   Package,
+  CreditCard,
 } from 'lucide-react';
-
 
 const adminNav = [
   { label: 'Overview', href: '/admin', icon: LayoutDashboard },
@@ -39,6 +39,7 @@ const ambassadorNav = [
   { label: 'My Leads', href: '/dashboard/leads', icon: MessageCircle },
   { label: 'Activity', href: '/dashboard/activity', icon: Activity },
   { label: 'Leaderboard', href: '/dashboard/leaderboard', icon: Trophy },
+  { label: 'Payout Account', href: '/dashboard/payout-account', icon: CreditCard },
   { label: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 

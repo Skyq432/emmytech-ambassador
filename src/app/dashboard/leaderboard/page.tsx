@@ -30,7 +30,7 @@ export default function LeaderboardPage() {
           status,
           users(name)
         `)
-        .neq('status', 'deleted')
+        .eq('status', 'active')
         .order('total_points', { ascending: false });
 
       if (error) {

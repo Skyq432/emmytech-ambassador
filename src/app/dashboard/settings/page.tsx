@@ -26,8 +26,15 @@ import {
   EyeOff,
   Phone,
   KeyRound,
+  Calendar,
+  Gift,
+  ShieldCheck,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+
+const OFFICIAL_AMBASSADOR_DOMAIN = 'https://emmytechambassador.netlify.app';
 
 interface UserProfile {
   id: string;
@@ -55,6 +62,7 @@ interface AmbassadorProfile {
   available_balance: number;
   status: string;
   created_at: string;
+  date_of_birth: string | null;
 }
 
 interface NotificationPref {
@@ -78,6 +86,7 @@ export default function SettingsPage() {
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [instagram, setInstagram] = useState('');
   const [tiktok, setTiktok] = useState('');
   const [twitter, setTwitter] = useState('');
@@ -110,11 +119,36 @@ export default function SettingsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
 
+  const referralLink = ambassador
+    ? `${OFFICIAL_AMBASSADOR_DOMAIN}/r/${
+        ambassador.custom_referral_code || ambassador.referral_code
+      }`
+    : '';
+
+  const profileChecks = [
+    { label: 'Profile photo', done: Boolean(avatarUrl) },
+    { label: 'WhatsApp number', done: Boolean(whatsappNumber) },
+    { label: 'Date of birth', done: Boolean(dateOfBirth) },
+    { label: 'Bio', done: Boolean(bio) },
+    { label: 'Custom referral code', done: Boolean(ambassador?.custom_referral_code) },
+  ];
+
+  const completedCount = profileChecks.filter((item) => item.done).length;
+  const completionPercentage =
+    user?.role === 'ambassador'
+      ? Math.round((completedCount / profileChecks.length) * 100)
+      : avatarUrl && name
+        ? 100
+        : 60;
+
   useEffect(() => {
     async function fetchProfile() {
       try {
         const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
         if (!session?.user) return;
 
         const { data: userData } = await supabase
@@ -140,7 +174,9 @@ export default function SettingsPage() {
             setAmbassador(ambassadorData);
             setBio(ambassadorData.bio || '');
             setWhatsappNumber(ambassadorData.whatsapp_number || '');
+            setDateOfBirth(ambassadorData.date_of_birth || '');
             setCustomCode(ambassadorData.custom_referral_code || '');
+
             const socials = ambassadorData.social_links || {};
             setInstagram(socials.instagram || '');
             setTiktok(socials.tiktok || '');
@@ -164,7 +200,10 @@ export default function SettingsPage() {
 
     try {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session?.user) throw new Error('Not authenticated');
 
       if (name !== user?.name) {
@@ -172,7 +211,10 @@ export default function SettingsPage() {
           .from('users')
           .update({ name })
           .eq('id', session.user.id);
+
         if (userError) throw userError;
+
+        setUser((prev) => (prev ? { ...prev, name } : prev));
       }
 
       if (user?.role === 'ambassador' && ambassador) {
@@ -188,11 +230,25 @@ export default function SettingsPage() {
           .update({
             bio: bio || null,
             whatsapp_number: whatsappNumber || '+2348146503700',
-            social_links: Object.keys(socialLinks).length > 0 ? socialLinks : {},
+            date_of_birth: dateOfBirth || null,
+            social_links:
+              Object.keys(socialLinks).length > 0 ? socialLinks : {},
           })
           .eq('id', ambassador.id);
 
         if (ambassadorError) throw ambassadorError;
+
+        setAmbassador((prev) =>
+          prev
+            ? {
+                ...prev,
+                bio: bio || null,
+                whatsapp_number: whatsappNumber || '+2348146503700',
+                date_of_birth: dateOfBirth || null,
+                social_links: socialLinks,
+              }
+            : prev
+        );
       }
 
       setMessage('Profile updated successfully');
@@ -206,17 +262,20 @@ export default function SettingsPage() {
 
   const handleSetCustomCode = async () => {
     if (!customCode.trim() || !ambassador) return;
+
     setSettingCustomCode(true);
     setMessage(null);
 
     try {
       const supabase = createClient();
+
       const { data, error } = await supabase.rpc('set_custom_referral_code', {
         p_ambassador_id: ambassador.id,
-        p_code: customCode.trim().toUpperCase(),
+        p_code: customCode.trim().toLowerCase(),
       });
 
       if (error) throw error;
+
       if (!data) {
         setMessage('Error: Custom code already set or unavailable');
         return;
@@ -251,7 +310,10 @@ export default function SettingsPage() {
 
     try {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session?.user) throw new Error('Not authenticated');
 
       const fileExt = file.name.split('.').pop();
@@ -263,9 +325,9 @@ export default function SettingsPage() {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('avatars').getPublicUrl(filePath);
 
       const { error: updateError } = await supabase
         .from('users')
@@ -275,6 +337,7 @@ export default function SettingsPage() {
       if (updateError) throw updateError;
 
       setAvatarUrl(publicUrl);
+      setUser((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
       setMessage('Avatar updated successfully');
       setTimeout(() => setMessage(null), 3000);
     } catch (err: any) {
@@ -289,6 +352,7 @@ export default function SettingsPage() {
       setMessage('Error: Passwords do not match');
       return;
     }
+
     if (newPassword.length < 6) {
       setMessage('Error: Password must be at least 6 characters');
       return;
@@ -300,6 +364,7 @@ export default function SettingsPage() {
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.updateUser({ password: newPassword });
+
       if (error) throw error;
 
       setMessage('Password changed successfully');
@@ -321,11 +386,10 @@ export default function SettingsPage() {
     setMessage(null);
 
     try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.admin.deleteUser(user!.id);
-      if (error) throw error;
-
-      window.location.href = '/';
+      setMessage(
+        'Error: Account deletion must be requested from admin support for security reasons.'
+      );
+      setDeleting(false);
     } catch (err: any) {
       setMessage(`Error: ${err.message}`);
       setDeleting(false);
@@ -333,8 +397,8 @@ export default function SettingsPage() {
   };
 
   const copyReferralLink = () => {
-    if (ambassador?.whatsapp_link) {
-      navigator.clipboard.writeText(ambassador.whatsapp_link);
+    if (referralLink) {
+      navigator.clipboard.writeText(referralLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -347,16 +411,16 @@ export default function SettingsPage() {
   };
 
   const toggleNotification = (key: keyof NotificationPref) => {
-    setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
+    setNotifications((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-48 bg-slate-200 rounded animate-pulse" />
+        <div className="h-8 w-48 animate-pulse rounded bg-slate-200" />
         <Card>
           <CardContent className="p-6">
-            <div className="h-32 w-full bg-slate-200 rounded animate-pulse" />
+            <div className="h-32 w-full animate-pulse rounded bg-slate-200" />
           </CardContent>
         </Card>
       </div>
@@ -366,14 +430,72 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Manage your profile, security, and preferences</p>
+        <h1 className="text-3xl font-bold tracking-tight">Profile Settings</h1>
+        <p className="text-muted-foreground">
+          Manage your profile, security, ambassador details, and preferences.
+        </p>
       </div>
 
       {message && (
-        <div className={`p-3 rounded-lg ${message.includes('Error') ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
+        <div
+          className={`rounded-lg border p-3 ${
+            message.includes('Error')
+              ? 'border-red-200 bg-red-50 text-red-600'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-600'
+          }`}
+        >
           {message}
         </div>
+      )}
+
+      {/* Profile Completion */}
+      {user?.role === 'ambassador' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              Profile Completion
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-medium text-slate-700">
+                  Your ambassador profile is {completionPercentage}% complete
+                </p>
+                <Badge variant={completionPercentage >= 80 ? 'default' : 'secondary'}>
+                  {completionPercentage}%
+                </Badge>
+              </div>
+
+              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-emmy-primary transition-all"
+                  style={{ width: `${completionPercentage}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {profileChecks.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center gap-2 rounded-lg bg-slate-50 p-3 text-sm"
+                >
+                  {item.done ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <Circle className="h-4 w-4 text-slate-300" />
+                  )}
+                  <span className={item.done ? 'text-slate-700' : 'text-slate-400'}>
+                    {item.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Avatar & Account Info */}
@@ -384,23 +506,29 @@ export default function SettingsPage() {
             Account Information
           </CardTitle>
         </CardHeader>
+
         <CardContent className="space-y-6">
-          {/* Avatar */}
           <div className="flex items-center gap-4">
             <div className="relative">
               {avatarUrl ? (
-                <img src={avatarUrl} alt="Avatar" className="h-16 w-16 rounded-full object-cover" />
+                <img
+                  src={avatarUrl}
+                  alt="Avatar"
+                  className="h-16 w-16 rounded-full object-cover"
+                />
               ) : (
-                <div className="h-16 w-16 rounded-full bg-emmy-primary text-white flex items-center justify-center text-xl font-bold">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emmy-primary text-xl font-bold text-white">
                   {user?.name?.[0]?.toUpperCase() || 'U'}
                 </div>
               )}
+
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-slate-800 text-white flex items-center justify-center hover:bg-slate-700 transition-colors"
+                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-white transition-colors hover:bg-slate-700"
               >
                 <Camera className="h-3.5 w-3.5" />
               </button>
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -409,14 +537,17 @@ export default function SettingsPage() {
                 onChange={handleAvatarUpload}
               />
             </div>
+
             <div>
               <p className="font-medium">{user?.name || 'User'}</p>
               <p className="text-sm text-muted-foreground">{user?.email}</p>
-              {uploadingAvatar && <p className="text-xs text-emmy-primary mt-1">Uploading...</p>}
+              {uploadingAvatar && (
+                <p className="mt-1 text-xs text-emmy-primary">Uploading...</p>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">Full Name</label>
               <div className="relative">
@@ -434,81 +565,43 @@ export default function SettingsPage() {
               <label className="text-sm font-medium">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={user?.email || ''}
-                  disabled
-                  className="pl-9 bg-slate-50"
-                />
+                <Input value={user?.email || ''} disabled className="bg-slate-50 pl-9" />
               </div>
             </div>
+
+            {user?.role === 'ambassador' && (
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium">Date of Birth</label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <Gift className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emmy-primary" />
+                  <span>
+                    Add your date of birth to enjoy special recognition and
+                    exclusive benefits on your birthday.
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
             <Badge variant={user?.role === 'admin' ? 'default' : 'secondary'}>
               {user?.role || 'unknown'}
             </Badge>
+
             <span className="text-sm text-muted-foreground">
               Joined {user?.created_at ? formatDate(user.created_at) : 'N/A'}
             </span>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Security */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lock className="h-5 w-5" />
-            Security
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!showPasswordForm ? (
-            <Button variant="outline" onClick={() => setShowPasswordForm(true)}>
-              <Lock className="h-4 w-4 mr-2" />
-              Change Password
-            </Button>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">New Password</label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Min 6 characters"
-                  />
-                  <button
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2.5 text-muted-foreground"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Confirm Password</label>
-                <Input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repeat new password"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleChangePassword}
-                  disabled={changingPassword || !newPassword || !confirmPassword}
-                >
-                  {changingPassword ? 'Updating...' : 'Update Password'}
-                </Button>
-                <Button variant="ghost" onClick={() => setShowPasswordForm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -519,18 +612,34 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <LinkIcon className="h-5 w-5" />
-                Ambassador Details
+                Ambassador Information
               </CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Ambassador Tag</label>
                   <Input value={ambassador.ambassador_tag} disabled className="bg-slate-50" />
                 </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Referral Code</label>
                   <Input value={ambassador.referral_code} disabled className="bg-slate-50" />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Status</label>
+                  <Input value={ambassador.status} disabled className="bg-slate-50 capitalize" />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Joined Ambassador Program</label>
+                  <Input
+                    value={ambassador.created_at ? formatDate(ambassador.created_at) : 'N/A'}
+                    disabled
+                    className="bg-slate-50"
+                  />
                 </div>
               </div>
 
@@ -543,25 +652,35 @@ export default function SettingsPage() {
                     <Badge variant="secondary">Locked</Badge>
                   )}
                 </div>
+
                 {ambassador.custom_referral_code_set ? (
                   <div className="flex items-center gap-2">
-                    <Input 
-                      value={ambassador.custom_referral_code || ''} 
-                      disabled 
-                      className="bg-slate-50 flex-1" 
+                    <Input
+                      value={ambassador.custom_referral_code || ''}
+                      disabled
+                      className="flex-1 bg-slate-50"
                     />
-                    <span className="text-xs text-muted-foreground">Cannot be changed</span>
+                    <span className="text-xs text-muted-foreground">
+                      Cannot be changed
+                    </span>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     <div className="flex gap-2">
                       <Input
                         value={customCode}
-                        onChange={(e) => setCustomCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                        placeholder="Set your custom code (write once)"
-                        className="flex-1 uppercase"
-                        maxLength={15}
+                        onChange={(e) =>
+                          setCustomCode(
+                            e.target.value
+                              .toLowerCase()
+                              .replace(/[^a-z0-9]/g, '')
+                          )
+                        }
+                        placeholder="Set your custom code"
+                        className="flex-1 lowercase"
+                        maxLength={20}
                       />
+
                       <Button
                         size="sm"
                         onClick={handleSetCustomCode}
@@ -570,8 +689,9 @@ export default function SettingsPage() {
                         {settingCustomCode ? 'Saving...' : 'Set'}
                       </Button>
                     </div>
+
                     <p className="text-xs text-muted-foreground">
-                      Choose a memorable code (3-15 chars). This can only be set once!
+                      Choose a memorable code. This can only be set once.
                     </p>
                   </div>
                 )}
@@ -588,21 +708,27 @@ export default function SettingsPage() {
                     placeholder="+2348146503700"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">This is the number customers will reach you on</p>
+                <p className="text-xs text-muted-foreground">
+                  This number helps admin contact you when necessary.
+                </p>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">WhatsApp Link</label>
+                <label className="text-sm font-medium">Referral Link</label>
                 <div className="flex gap-2">
-                  <Input
-                    value={ambassador.whatsapp_link}
-                    disabled
-                    className="bg-slate-50 flex-1"
-                  />
+                  <Input value={referralLink} disabled className="flex-1 bg-slate-50" />
+
                   <Button variant="outline" size="sm" onClick={copyReferralLink}>
-                    {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                    {copied ? (
+                      <Check className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Share this link to track leads and ambassador activity.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -624,23 +750,43 @@ export default function SettingsPage() {
                 Social Links
               </CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Instagram</label>
-                  <Input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@username" />
+                  <Input
+                    value={instagram}
+                    onChange={(e) => setInstagram(e.target.value)}
+                    placeholder="@username"
+                  />
                 </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium">TikTok</label>
-                  <Input value={tiktok} onChange={(e) => setTiktok(e.target.value)} placeholder="@username" />
+                  <Input
+                    value={tiktok}
+                    onChange={(e) => setTiktok(e.target.value)}
+                    placeholder="@username"
+                  />
                 </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Twitter / X</label>
-                  <Input value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="@username" />
+                  <Input
+                    value={twitter}
+                    onChange={(e) => setTwitter(e.target.value)}
+                    placeholder="@username"
+                  />
                 </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Threads</label>
-                  <Input value={threads} onChange={(e) => setThreads(e.target.value)} placeholder="@username" />
+                  <Input
+                    value={threads}
+                    onChange={(e) => setThreads(e.target.value)}
+                    placeholder="@username"
+                  />
                 </div>
               </div>
             </CardContent>
@@ -653,18 +799,23 @@ export default function SettingsPage() {
                 Performance
               </CardTitle>
             </CardHeader>
+
             <CardContent>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 p-4 text-center">
                   <p className="text-2xl font-bold">{ambassador.total_points}</p>
                   <p className="text-sm text-muted-foreground">Points</p>
                 </div>
-                <div className="text-center p-4 bg-slate-50 rounded-lg">
+
+                <div className="rounded-lg bg-slate-50 p-4 text-center">
                   <p className="text-2xl font-bold">{ambassador.total_leads}</p>
                   <p className="text-sm text-muted-foreground">Leads</p>
                 </div>
-                <div className="text-center p-4 bg-slate-50 rounded-lg">
-                  <p className="text-2xl font-bold">{ambassador.total_conversions}</p>
+
+                <div className="rounded-lg bg-slate-50 p-4 text-center">
+                  <p className="text-2xl font-bold">
+                    {ambassador.total_conversions}
+                  </p>
                   <p className="text-sm text-muted-foreground">Conversions</p>
                 </div>
               </div>
@@ -672,6 +823,73 @@ export default function SettingsPage() {
           </Card>
         </>
       )}
+
+      {/* Security */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="h-5 w-5" />
+            Security
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {!showPasswordForm ? (
+            <Button variant="outline" onClick={() => setShowPasswordForm(true)}>
+              <Lock className="mr-2 h-4 w-4" />
+              Change Password
+            </Button>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">New Password</label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Min 6 characters"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-muted-foreground"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Confirm Password</label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repeat new password"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleChangePassword}
+                  disabled={changingPassword || !newPassword || !confirmPassword}
+                >
+                  {changingPassword ? 'Updating...' : 'Update Password'}
+                </Button>
+
+                <Button variant="ghost" onClick={() => setShowPasswordForm(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Notifications */}
       <Card>
@@ -681,27 +899,50 @@ export default function SettingsPage() {
             Notifications
           </CardTitle>
         </CardHeader>
+
         <CardContent className="space-y-4">
           {[
-            { key: 'new_leads' as const, label: 'New Leads', desc: 'When someone clicks your WhatsApp link' },
-            { key: 'post_approvals' as const, label: 'Post Approvals', desc: 'When admin reviews your activity' },
-            { key: 'conversions' as const, label: 'Conversions', desc: 'When a lead converts to a sale' },
-            { key: 'point_rewards' as const, label: 'Point Rewards', desc: 'When you earn points' },
-            { key: 'leaderboard_updates' as const, label: 'Leaderboard Updates', desc: 'Weekly position changes' },
+            {
+              key: 'new_leads' as const,
+              label: 'New Leads',
+              desc: 'When someone clicks your referral link',
+            },
+            {
+              key: 'post_approvals' as const,
+              label: 'Post Approvals',
+              desc: 'When admin reviews your activity',
+            },
+            {
+              key: 'conversions' as const,
+              label: 'Conversions',
+              desc: 'When a lead converts to a sale',
+            },
+            {
+              key: 'point_rewards' as const,
+              label: 'Point Rewards',
+              desc: 'When you earn points',
+            },
+            {
+              key: 'leaderboard_updates' as const,
+              label: 'Leaderboard Updates',
+              desc: 'Weekly position changes',
+            },
           ].map((item) => (
             <div key={item.key} className="flex items-center justify-between py-2">
               <div>
                 <p className="font-medium">{item.label}</p>
                 <p className="text-sm text-muted-foreground">{item.desc}</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+
+              <label className="relative inline-flex cursor-pointer items-center">
                 <input
                   type="checkbox"
                   checked={notifications[item.key]}
                   onChange={() => toggleNotification(item.key)}
-                  className="sr-only peer"
+                  className="peer sr-only"
                 />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emmy-primary" />
+
+                <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-emmy-primary peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none" />
               </label>
             </div>
           ))}
@@ -716,47 +957,55 @@ export default function SettingsPage() {
             Danger Zone
           </CardTitle>
         </CardHeader>
+
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <p className="font-medium">Delete Account</p>
-              <p className="text-sm text-muted-foreground">Permanently remove your account and all data</p>
+              <p className="text-sm text-muted-foreground">
+                Account deletion must be reviewed by admin support.
+              </p>
             </div>
+
             <Button variant="danger" onClick={() => setShowDeleteModal(true)}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
+              <Trash2 className="mr-2 h-4 w-4" />
+              Request Delete
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Delete Account Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="mx-4 w-full max-w-md">
             <CardHeader>
-              <CardTitle className="text-red-600 flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-red-600">
                 <AlertTriangle className="h-5 w-5" />
-                Delete Account?
+                Request Account Deletion?
               </CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                This action cannot be undone. Type <strong>DELETE</strong> to confirm.
+                For security reasons, account deletion must be reviewed by admin
+                support. Type <strong>DELETE</strong> to submit your request.
               </p>
+
               <Input
                 value={deleteConfirm}
                 onChange={(e) => setDeleteConfirm(e.target.value)}
                 placeholder="Type DELETE"
               />
+
               <div className="flex gap-2">
                 <Button
                   variant="danger"
                   onClick={handleDeleteAccount}
                   disabled={deleteConfirm !== 'DELETE' || deleting}
                 >
-                  {deleting ? 'Deleting...' : 'Permanently Delete'}
+                  {deleting ? 'Submitting...' : 'Submit Request'}
                 </Button>
+
                 <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>
                   Cancel
                 </Button>
