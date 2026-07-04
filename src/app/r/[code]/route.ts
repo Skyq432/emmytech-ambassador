@@ -7,8 +7,14 @@ export const runtime = 'nodejs';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+const VISITOR_COOKIE_NAME = 'emmytech_visitor_id';
+
 const FALLBACK_WHATSAPP_LINK =
   'https://wa.me/2348146503700?text=Hello%20EmmyTech%2C%20I%20want%20to%20make%20an%20enquiry.';
+
+function createVisitorId() {
+  return crypto.randomUUID();
+}
 
 async function writeRouteLog(
   supabase: any,
@@ -31,6 +37,22 @@ async function writeRouteLog(
   }
 }
 
+function redirectWithVisitorCookie(url: string, visitorId: string) {
+  const response = NextResponse.redirect(url);
+
+  response.cookies.set({
+    name: VISITOR_COOKIE_NAME,
+    value: visitorId,
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+
+  return response;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ code: string }> }
@@ -38,8 +60,11 @@ export async function GET(
   const { code } = await params;
   const cleanCode = decodeURIComponent(code).trim().toLowerCase();
 
+  const existingVisitorId = request.cookies.get(VISITOR_COOKIE_NAME)?.value;
+  const visitorId = existingVisitorId || createVisitorId();
+
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
+    return redirectWithVisitorCookie(FALLBACK_WHATSAPP_LINK, visitorId);
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -49,7 +74,11 @@ export async function GET(
       supabase,
       cleanCode,
       'route_started',
-      'Referral route started'
+      'Referral route started',
+      {
+        visitor_id: visitorId,
+        had_existing_cookie: Boolean(existingVisitorId),
+      }
     );
 
     const ipAddress =
@@ -67,6 +96,7 @@ export async function GET(
       {
         ipAddress,
         userAgent,
+        visitor_id: visitorId,
       }
     );
 
@@ -83,7 +113,7 @@ export async function GET(
         ambassadorError.message
       );
 
-      return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
+      return redirectWithVisitorCookie(FALLBACK_WHATSAPP_LINK, visitorId);
     }
 
     const ambassador = (ambassadors || []).find((item: any) => {
@@ -103,10 +133,11 @@ export async function GET(
         'No active ambassador found',
         {
           active_ambassadors_checked: ambassadors?.length || 0,
+          visitor_id: visitorId,
         }
       );
 
-      return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
+      return redirectWithVisitorCookie(FALLBACK_WHATSAPP_LINK, visitorId);
     }
 
     await writeRouteLog(
@@ -118,6 +149,7 @@ export async function GET(
         ambassador_id: ambassador.id,
         referral_code: ambassador.referral_code,
         custom_referral_code: ambassador.custom_referral_code,
+        visitor_id: visitorId,
       }
     );
 
@@ -125,11 +157,12 @@ export async function GET(
       ambassador.custom_referral_code || ambassador.referral_code || cleanCode;
 
     const { error: rpcError } = await supabase.rpc(
-      'track_whatsapp_referral_click',
+      'track_whatsapp_referral_click_v2',
       {
         p_referral_code: referralCodeToTrack,
         p_ip_address: ipAddress,
         p_user_agent: userAgent,
+        p_visitor_id: visitorId,
       }
     );
 
@@ -142,6 +175,7 @@ export async function GET(
         {
           details: rpcError,
           referral_code_to_track: referralCodeToTrack,
+          visitor_id: visitorId,
         }
       );
     } else {
@@ -152,21 +186,26 @@ export async function GET(
         'Referral click tracked successfully',
         {
           referral_code_to_track: referralCodeToTrack,
+          visitor_id: visitorId,
         }
       );
     }
 
-    return NextResponse.redirect(
-      ambassador.whatsapp_link || FALLBACK_WHATSAPP_LINK
+    return redirectWithVisitorCookie(
+      ambassador.whatsapp_link || FALLBACK_WHATSAPP_LINK,
+      visitorId
     );
   } catch (error: any) {
     await writeRouteLog(
       supabase,
       cleanCode,
       'route_failed',
-      error?.message || 'Unknown route error'
+      error?.message || 'Unknown route error',
+      {
+        visitor_id: visitorId,
+      }
     );
 
-    return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
+    return redirectWithVisitorCookie(FALLBACK_WHATSAPP_LINK, visitorId);
   }
 }
