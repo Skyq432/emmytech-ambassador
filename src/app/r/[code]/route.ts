@@ -10,20 +10,40 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const FALLBACK_WHATSAPP_LINK =
   'https://wa.me/2348146503700?text=Hello%20EmmyTech%2C%20I%20want%20to%20make%20an%20enquiry.';
 
+async function writeRouteLog(
+  supabase: ReturnType<typeof createClient>,
+  code: string,
+  step: string,
+  message: string,
+  data: Record<string, any> = {}
+) {
+  try {
+    await supabase.from('referral_route_logs').insert({
+      code,
+      step,
+      message,
+      data,
+    });
+  } catch {
+    // Do not block redirect if logging fails.
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ code: string }> }
 ) {
+  const { code } = await params;
+  const cleanCode = decodeURIComponent(code).trim();
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
   try {
-    const { code } = await params;
-    const cleanCode = decodeURIComponent(code).trim();
-
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.error('Missing Supabase environment variables.');
-      return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
-    }
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    await writeRouteLog(supabase, cleanCode, 'route_started', 'Referral route started');
 
     const ipAddress =
       request.headers.get('x-forwarded-for') ||
@@ -31,6 +51,11 @@ export async function GET(
       null;
 
     const userAgent = request.headers.get('user-agent') || null;
+
+    await writeRouteLog(supabase, cleanCode, 'request_info', 'Captured request info', {
+      ipAddress,
+      userAgent,
+    });
 
     const { data: ambassador, error: ambassadorError } = await supabase
       .from('ambassadors')
@@ -42,14 +67,20 @@ export async function GET(
       .maybeSingle();
 
     if (ambassadorError) {
-      console.error('Ambassador lookup failed:', ambassadorError.message);
+      await writeRouteLog(supabase, cleanCode, 'ambassador_error', ambassadorError.message);
       return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
     }
 
     if (!ambassador) {
-      console.error('No active ambassador found for referral code:', cleanCode);
+      await writeRouteLog(supabase, cleanCode, 'ambassador_not_found', 'No active ambassador found');
       return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
     }
+
+    await writeRouteLog(supabase, cleanCode, 'ambassador_found', 'Active ambassador found', {
+      ambassador_id: ambassador.id,
+      referral_code: ambassador.referral_code,
+      custom_referral_code: ambassador.custom_referral_code,
+    });
 
     const referralCodeToTrack =
       ambassador.custom_referral_code || ambassador.referral_code || cleanCode;
@@ -64,14 +95,24 @@ export async function GET(
     );
 
     if (rpcError) {
-      console.error('Referral tracking RPC failed:', rpcError.message);
+      await writeRouteLog(supabase, cleanCode, 'rpc_error', rpcError.message, {
+        details: rpcError,
+      });
+    } else {
+      await writeRouteLog(supabase, cleanCode, 'rpc_success', 'Referral click tracked successfully');
     }
 
     return NextResponse.redirect(
       ambassador.whatsapp_link || FALLBACK_WHATSAPP_LINK
     );
   } catch (error: any) {
-    console.error('Referral route failed:', error?.message || error);
+    await writeRouteLog(
+      supabase,
+      cleanCode,
+      'route_failed',
+      error?.message || 'Unknown route error'
+    );
+
     return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
   }
 }
