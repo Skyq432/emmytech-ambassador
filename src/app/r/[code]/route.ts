@@ -27,7 +27,7 @@ async function writeRouteLog(
       },
     ]);
   } catch {
-    // Logging must never stop the WhatsApp redirect.
+    // Logging must never block the WhatsApp redirect.
   }
 }
 
@@ -36,7 +36,7 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> }
 ) {
   const { code } = await params;
-  const cleanCode = decodeURIComponent(code).trim();
+  const cleanCode = decodeURIComponent(code).trim().toLowerCase();
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
@@ -70,14 +70,10 @@ export async function GET(
       }
     );
 
-    const { data: ambassador, error: ambassadorError } = await supabase
+    const { data: ambassadors, error: ambassadorError } = await supabase
       .from('ambassadors')
       .select('id, referral_code, custom_referral_code, status, whatsapp_link')
-      .or(
-        `referral_code.ilike.${cleanCode},custom_referral_code.ilike.${cleanCode}`
-      )
-      .eq('status', 'active')
-      .maybeSingle();
+      .eq('status', 'active');
 
     if (ambassadorError) {
       await writeRouteLog(
@@ -90,12 +86,24 @@ export async function GET(
       return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
     }
 
+    const ambassador = (ambassadors || []).find((item: any) => {
+      const referralCode = String(item.referral_code || '').trim().toLowerCase();
+      const customCode = String(item.custom_referral_code || '')
+        .trim()
+        .toLowerCase();
+
+      return referralCode === cleanCode || customCode === cleanCode;
+    });
+
     if (!ambassador) {
       await writeRouteLog(
         supabase,
         cleanCode,
         'ambassador_not_found',
-        'No active ambassador found'
+        'No active ambassador found',
+        {
+          active_ambassadors_checked: ambassadors?.length || 0,
+        }
       );
 
       return NextResponse.redirect(FALLBACK_WHATSAPP_LINK);
@@ -133,6 +141,7 @@ export async function GET(
         rpcError.message,
         {
           details: rpcError,
+          referral_code_to_track: referralCodeToTrack,
         }
       );
     } else {
@@ -140,7 +149,10 @@ export async function GET(
         supabase,
         cleanCode,
         'rpc_success',
-        'Referral click tracked successfully'
+        'Referral click tracked successfully',
+        {
+          referral_code_to_track: referralCodeToTrack,
+        }
       );
     }
 
