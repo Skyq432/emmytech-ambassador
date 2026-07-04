@@ -18,6 +18,8 @@ import {
   DollarSign,
   Activity,
   ChevronRight,
+  Bell,
+  AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate, formatNumber, formatCurrency } from '@/lib/utils';
@@ -29,6 +31,8 @@ interface AdminStats {
   totalLeads: number;
   totalConversions: number;
   totalRevenue: number;
+  pendingLeadEdits: number;
+  unreadNotifications: number;
 }
 
 interface RecentActivity {
@@ -47,7 +51,6 @@ interface TopAmbassador {
   rank: number;
   name: string;
   tag: string;
-  total_points: number;
   total_leads: number;
   total_conversions: number;
 }
@@ -60,6 +63,8 @@ export default function AdminOverview() {
     totalLeads: 0,
     totalConversions: 0,
     totalRevenue: 0,
+    pendingLeadEdits: 0,
+    unreadNotifications: 0,
   });
 
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
@@ -116,6 +121,34 @@ export default function AdminOverview() {
 
         if (pendingError) throw pendingError;
 
+        // Pending lead edit requests from non-deleted ambassadors
+        const { data: pendingLeadEdits, error: leadEditError } = await supabase
+          .from('leads')
+          .select(
+            `
+              id,
+              edit_status,
+              ambassadors!inner (
+                id,
+                status
+              )
+            `,
+            { count: 'exact' }
+          )
+          .eq('edit_status', 'pending')
+          .neq('ambassadors.status', 'deleted');
+
+        if (leadEditError) throw leadEditError;
+
+        // Admin alerts, for example repeat conversions without commission
+        const { data: unreadNotifications, error: notificationError } =
+          await supabase
+            .from('admin_notifications')
+            .select('id', { count: 'exact' })
+            .eq('is_read', false);
+
+        if (notificationError) throw notificationError;
+
         // Leads only from non-deleted ambassadors for dashboard summary
         const { data: leadsData, error: leadsError } = await supabase
           .from('leads')
@@ -162,6 +195,8 @@ export default function AdminOverview() {
           totalLeads: leadsData?.length || 0,
           totalConversions: conversionsData?.length || 0,
           totalRevenue,
+          pendingLeadEdits: pendingLeadEdits?.length || 0,
+          unreadNotifications: unreadNotifications?.length || 0,
         });
 
         // Recent activity from non-deleted ambassadors only
@@ -202,14 +237,13 @@ export default function AdminOverview() {
 
         setRecentActivity(formattedActivity);
 
-        // Top performers should be active ambassadors only
+        // Top performers should be active ambassadors only, ranked by leads then conversions
         const { data: topAmbassadorsData, error: topError } = await supabase
           .from('ambassadors')
           .select(
             `
               id,
               ambassador_tag,
-              total_points,
               total_leads,
               total_conversions,
               status,
@@ -219,7 +253,8 @@ export default function AdminOverview() {
             `
           )
           .eq('status', 'active')
-          .order('total_points', { ascending: false })
+          .order('total_leads', { ascending: false })
+          .order('total_conversions', { ascending: false })
           .limit(5);
 
         if (topError) throw topError;
@@ -229,7 +264,6 @@ export default function AdminOverview() {
             rank: index + 1,
             name: ambassador.users?.name || 'Unknown',
             tag: ambassador.ambassador_tag,
-            total_points: ambassador.total_points || 0,
             total_leads: ambassador.total_leads || 0,
             total_conversions: ambassador.total_conversions || 0,
           })
@@ -270,6 +304,9 @@ export default function AdminOverview() {
     );
   }
 
+  const reviewItems =
+    stats.pendingApprovals + stats.pendingLeadEdits + stats.unreadNotifications;
+
   const statCards = [
     {
       label: 'Total Ambassadors',
@@ -280,12 +317,12 @@ export default function AdminOverview() {
       href: '/admin/ambassadors',
     },
     {
-      label: 'Pending Approvals',
-      value: stats.pendingApprovals.toString(),
-      sub: 'Needs review',
-      icon: Clock,
-      color: 'bg-amber-500',
-      href: '/admin/activities',
+      label: 'Review Items',
+      value: reviewItems.toString(),
+      sub: `${stats.pendingApprovals} posts · ${stats.pendingLeadEdits} lead edits · ${stats.unreadNotifications} alerts`,
+      icon: reviewItems > 0 ? Bell : Clock,
+      color: reviewItems > 0 ? 'bg-amber-500' : 'bg-slate-500',
+      href: stats.pendingLeadEdits > 0 || stats.unreadNotifications > 0 ? '/admin/leads' : '/admin/activities',
     },
     {
       label: 'Total Leads',
@@ -375,6 +412,35 @@ export default function AdminOverview() {
           );
         })}
       </div>
+
+      {reviewItems > 0 && (
+        <Link href={stats.pendingLeadEdits > 0 || stats.unreadNotifications > 0 ? '/admin/leads' : '/admin/activities'}>
+          <Card className="border border-amber-200 bg-amber-50 shadow-sm transition hover:bg-amber-100">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500">
+                  <AlertTriangle className="h-5 w-5 text-white" />
+                </div>
+
+                <div>
+                  <p className="font-semibold text-amber-900">
+                    {reviewItems} item{reviewItems > 1 ? 's' : ''} need admin attention
+                  </p>
+                  <p className="text-sm text-amber-700">
+                    {stats.pendingApprovals} post approval{stats.pendingApprovals !== 1 ? 's' : ''},{' '}
+                    {stats.pendingLeadEdits} lead update{stats.pendingLeadEdits !== 1 ? 's' : ''},{' '}
+                    {stats.unreadNotifications} alert{stats.unreadNotifications !== 1 ? 's' : ''}.
+                  </p>
+                </div>
+              </div>
+
+              <Button variant="outline" className="border-amber-300 bg-white text-amber-700 hover:bg-amber-50">
+                Review Now
+              </Button>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Recent Activity */}
@@ -516,10 +582,10 @@ export default function AdminOverview() {
                 topAmbassadors.map((ambassador) => (
                   <div
                     key={`${ambassador.rank}-${ambassador.tag}`}
-                    className="flex items-center gap-3 rounded-lg bg-slate-50 p-4"
+                    className="flex min-w-0 items-center gap-3 rounded-xl bg-slate-50 p-4"
                   >
                     <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
                         ambassador.rank === 1
                           ? 'bg-amber-400 text-white'
                           : ambassador.rank === 2
@@ -533,24 +599,28 @@ export default function AdminOverview() {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">
+                      <p className="truncate text-sm font-semibold text-slate-900">
                         {ambassador.name}
                       </p>
-                      <p className="text-xs text-slate-500">{ambassador.tag}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        {ambassador.tag}
+                      </p>
                     </div>
 
-                    <div className="text-right">
+                    <div className="w-20 shrink-0 text-right">
                       <p className="text-sm font-bold text-blue-600">
-                        {formatNumber(ambassador.total_points)}
+                        {formatNumber(ambassador.total_leads)}
                       </p>
-                      <p className="text-xs text-slate-400">pts</p>
+                      <p className="truncate text-[11px] text-slate-400">
+                        {formatNumber(ambassador.total_conversions)} conv.
+                      </p>
                     </div>
                   </div>
                 ))
               )}
             </div>
 
-            <Link href="/dashboard/leaderboard">
+            <Link href="/admin/leaderboard">
               <Button
                 variant="outline"
                 className="mt-4 w-full border-slate-200 text-sm hover:bg-slate-50"

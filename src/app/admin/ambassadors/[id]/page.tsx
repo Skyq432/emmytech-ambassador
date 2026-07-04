@@ -19,12 +19,13 @@ import {
   PauseCircle,
   PlayCircle,
   Trash2,
-  Award,
   Shield,
   Activity,
   AlertTriangle,
+  Percent,
+  Gift,
 } from 'lucide-react';
-import { formatDate, formatCurrency, formatNumber } from '@/lib/utils';
+import { formatDate, formatCurrency } from '@/lib/utils';
 
 interface AmbassadorDetail {
   id: string;
@@ -39,7 +40,6 @@ interface AmbassadorDetail {
   whatsapp_link: string;
   bio: string | null;
   social_links: Record<string, string>;
-  total_points: number;
   total_leads: number;
   total_conversions: number;
   total_cashed_out: number;
@@ -54,8 +54,8 @@ interface AmbassadorDetail {
 
 interface Lead {
   id: string;
-  customer_name: string;
-  customer_phone: string;
+  customer_name: string | null;
+  customer_phone: string | null;
   customer_email: string | null;
   status: string;
   created_at: string;
@@ -66,24 +66,41 @@ interface PostActivity {
   platform: string;
   post_url: string;
   status: string;
-  points_awarded: number;
   submitted_at: string;
 }
 
 interface Conversion {
   id: string;
+  lead_id?: string | null;
   amount: number;
   commission_amount: number;
+  commission_rate?: number | null;
+  commission_percentage?: number | null;
+  conversion_sequence?: number | null;
+  is_repeat_conversion?: boolean | null;
+  is_commissionable?: boolean | null;
+  ambassador_notified?: boolean | null;
+  admin_attention_required?: boolean | null;
+  internal_note?: string | null;
   approved_at: string;
 }
 
 interface Payout {
   id: string;
+  lead_id?: string | null;
   amount: number;
-  points_paid: number;
   status: string;
   paid_at: string;
   notes: string | null;
+  created_at?: string;
+}
+
+interface Bonus {
+  id: string;
+  lead_id?: string | null;
+  amount: number;
+  reason: string | null;
+  created_at: string;
 }
 
 export default function AmbassadorDetailPage() {
@@ -97,6 +114,7 @@ export default function AmbassadorDetailPage() {
   const [activities, setActivities] = useState<PostActivity[]>([]);
   const [conversions, setConversions] = useState<Conversion[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [bonuses, setBonuses] = useState<Bonus[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -114,13 +132,19 @@ export default function AmbassadorDetailPage() {
   const [showAddConversion, setShowAddConversion] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [conversionAmount, setConversionAmount] = useState('');
+  const [commissionPercentage, setCommissionPercentage] = useState('5');
+  const [commissionEnabled, setCommissionEnabled] = useState(true);
   const [addingConversion, setAddingConversion] = useState(false);
 
   const [showPayout, setShowPayout] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState('');
-  const [payoutPoints, setPayoutPoints] = useState('');
   const [payoutNotes, setPayoutNotes] = useState('');
   const [processingPayout, setProcessingPayout] = useState(false);
+
+  const [showBonus, setShowBonus] = useState(false);
+  const [bonusAmount, setBonusAmount] = useState('');
+  const [bonusReason, setBonusReason] = useState('');
+  const [addingBonus, setAddingBonus] = useState(false);
 
   useEffect(() => {
     if (ambassadorId) fetchData();
@@ -182,6 +206,14 @@ export default function AmbassadorDetailPage() {
         .order('created_at', { ascending: false });
 
       setPayouts(payData || []);
+
+      const { data: bonusData } = await supabase
+        .from('ambassador_bonuses')
+        .select('*')
+        .eq('ambassador_id', ambassadorId)
+        .order('created_at', { ascending: false });
+
+      setBonuses(bonusData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
     } finally {
@@ -222,7 +254,7 @@ export default function AmbassadorDetailPage() {
     if (!ambassador) return;
 
     const confirmed = window.confirm(
-      'SOFT DELETE\n\nThis will hide this ambassador from the active ambassador list and stop them from using the dashboard, but their leads, points, conversions, payout history and referral history will remain in the database.\n\nYou can restore them later by changing their status back to active.\n\nContinue?'
+      'SOFT DELETE\n\nThis will hide this ambassador from the active ambassador list and stop them from using the dashboard, but their leads, conversions, payout history and referral history will remain in the database.\n\nYou can restore them later by changing their status back to active.\n\nContinue?'
     );
 
     if (!confirmed) return;
@@ -317,6 +349,33 @@ export default function AmbassadorDetailPage() {
 
   const handleAddConversion = async () => {
     if (!selectedLeadId || !conversionAmount) return;
+    if (commissionEnabled && !commissionPercentage) return;
+
+    const amount = parseFloat(conversionAmount);
+    const percentage = commissionEnabled ? parseFloat(commissionPercentage) : 0;
+
+    if (Number.isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid sale amount.');
+      return;
+    }
+
+    if (commissionEnabled && (Number.isNaN(percentage) || percentage <= 0)) {
+      alert('Please enter a valid commission percentage, or select no commission.');
+      return;
+    }
+
+    const selectedLeadPreviousConversions = conversions.filter(
+      (conversion) => conversion.lead_id === selectedLeadId
+    ).length;
+
+    if (!commissionEnabled && selectedLeadPreviousConversions > 0) {
+      const confirmed = window.confirm(
+        'This is a repeat conversion without ambassador commission. It will be saved and flagged for admin attention. Continue?'
+      );
+
+      if (!confirmed) return;
+    }
+
     setAddingConversion(true);
 
     try {
@@ -329,13 +388,16 @@ export default function AmbassadorDetailPage() {
       const { error } = await supabase.rpc('admin_create_conversion', {
         p_admin_id: session.user.id,
         p_lead_id: selectedLeadId,
-        p_amount: parseFloat(conversionAmount),
+        p_amount: amount,
+        p_commission_percentage: percentage,
       });
 
       if (error) throw error;
 
       setSelectedLeadId('');
       setConversionAmount('');
+      setCommissionPercentage('5');
+      setCommissionEnabled(true);
       setShowAddConversion(false);
       fetchData();
     } catch (err: any) {
@@ -346,7 +408,7 @@ export default function AmbassadorDetailPage() {
   };
 
   const handlePayout = async () => {
-    if (!payoutAmount || !payoutPoints) return;
+    if (!payoutAmount) return;
     setProcessingPayout(true);
 
     try {
@@ -359,7 +421,7 @@ export default function AmbassadorDetailPage() {
       const { error } = await supabase.rpc('process_payout', {
         p_admin_id: session.user.id,
         p_ambassador_id: ambassadorId,
-        p_points_paid: parseInt(payoutPoints),
+        p_points_paid: 0,
         p_amount: parseFloat(payoutAmount),
         p_notes: payoutNotes || null,
       });
@@ -367,7 +429,6 @@ export default function AmbassadorDetailPage() {
       if (error) throw error;
 
       setPayoutAmount('');
-      setPayoutPoints('');
       setPayoutNotes('');
       setShowPayout(false);
       fetchData();
@@ -375,6 +436,45 @@ export default function AmbassadorDetailPage() {
       alert(err.message);
     } finally {
       setProcessingPayout(false);
+    }
+  };
+
+  const handleAddBonus = async () => {
+    if (!bonusAmount) return;
+
+    const amount = parseFloat(bonusAmount);
+
+    if (Number.isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid bonus amount.');
+      return;
+    }
+
+    setAddingBonus(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const { error } = await supabase.rpc('admin_add_ambassador_bonus', {
+        p_admin_id: session.user.id,
+        p_ambassador_id: ambassadorId,
+        p_amount: amount,
+        p_reason: bonusReason || null,
+      });
+
+      if (error) throw error;
+
+      setBonusAmount('');
+      setBonusReason('');
+      setShowBonus(false);
+      fetchData();
+    } catch (err: any) {
+      alert(err.message || 'Unable to add bonus.');
+    } finally {
+      setAddingBonus(false);
     }
   };
 
@@ -398,6 +498,17 @@ export default function AmbassadorDetailPage() {
     { key: 'payouts', label: `Payouts (${payouts.length})`, icon: Send },
   ];
 
+  const previewCommission =
+    commissionEnabled && conversionAmount && commissionPercentage
+      ? (parseFloat(conversionAmount || '0') * parseFloat(commissionPercentage || '0')) / 100
+      : 0;
+
+  const selectedLead = leads.find((lead) => lead.id === selectedLeadId) || null;
+  const selectedLeadConversionCount = selectedLeadId
+    ? conversions.filter((conversion) => conversion.lead_id === selectedLeadId).length
+    : 0;
+  const selectedLeadNextConversionNumber = selectedLeadConversionCount + 1;
+
   return (
     <div className="space-y-8">
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-950 via-emmy-primary to-blue-700 p-8 text-white shadow-xl">
@@ -412,9 +523,9 @@ export default function AmbassadorDetailPage() {
           Back to ambassadors
         </button>
 
-        <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div className="flex items-center gap-5">
-            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border border-white/20 bg-white/15 text-4xl font-bold shadow-lg">
+        <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_560px] xl:items-end">
+          <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/20 bg-white/15 text-4xl font-bold shadow-lg">
               {ambassador.avatar_url ? (
                 <img src={ambassador.avatar_url} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -422,36 +533,26 @@ export default function AmbassadorDetailPage() {
               )}
             </div>
 
-            <div>
-              <div className="mb-3 flex items-center gap-3">
-                <h1 className="text-4xl font-bold tracking-tight">{ambassador.name}</h1>
-                <span className="rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">
+            <div className="min-w-0">
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                <h1 className="break-words text-3xl font-bold tracking-tight sm:text-4xl">
+                  {ambassador.name}
+                </h1>
+                <span className="shrink-0 rounded-full bg-white/15 px-3 py-1 text-sm font-semibold">
                   {ambassador.status}
                 </span>
               </div>
 
-              <p className="text-lg text-blue-100">{ambassador.ambassador_tag}</p>
-              <p className="mt-1 text-sm text-blue-100">{ambassador.email}</p>
+              <p className="break-all text-lg text-blue-100">{ambassador.ambassador_tag}</p>
+              <p className="mt-1 break-all text-sm text-blue-100">{ambassador.email}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-              <p className="text-sm text-blue-100">Points</p>
-              <p className="text-2xl font-bold">{formatNumber(ambassador.total_points)}</p>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-              <p className="text-sm text-blue-100">Leads</p>
-              <p className="text-2xl font-bold">{ambassador.total_leads}</p>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-              <p className="text-sm text-blue-100">Conversions</p>
-              <p className="text-2xl font-bold">{ambassador.total_conversions}</p>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-              <p className="text-sm text-blue-100">Balance</p>
-              <p className="text-2xl font-bold">{formatCurrency(ambassador.available_balance)}</p>
-            </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <HeroStat label="Leads" value={String(ambassador.total_leads)} />
+            <HeroStat label="Conversions" value={String(ambassador.total_conversions)} />
+            <HeroStat label="Balance" value={formatCurrency(ambassador.available_balance)} />
+            <HeroStat label="Paid Out" value={formatCurrency(ambassador.total_cashed_out)} />
           </div>
         </div>
       </div>
@@ -465,6 +566,9 @@ export default function AmbassadorDetailPage() {
         </Button>
         <Button onClick={() => setShowPayout(true)} variant="outline" className="gap-2 rounded-xl">
           <Send className="h-4 w-4" /> Send Payout
+        </Button>
+        <Button onClick={() => setShowBonus(true)} variant="outline" className="gap-2 rounded-xl">
+          <Gift className="h-4 w-4" /> Add Bonus
         </Button>
       </div>
 
@@ -518,9 +622,9 @@ export default function AmbassadorDetailPage() {
                 <CardTitle>Financial Summary</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-3">
-                <Summary icon={DollarSign} label="Available" value={formatCurrency(ambassador.available_balance)} />
-                <Summary icon={Send} label="Cashed Out" value={formatCurrency(ambassador.total_cashed_out)} />
-                <Summary icon={Award} label="Total Points" value={formatNumber(ambassador.total_points)} />
+                <Summary icon={DollarSign} label="Available Balance" value={formatCurrency(ambassador.available_balance)} />
+                <Summary icon={Send} label="Total Paid Out" value={formatCurrency(ambassador.total_cashed_out)} />
+                <Summary icon={TrendingUp} label="Conversions" value={String(ambassador.total_conversions)} />
               </CardContent>
             </Card>
 
@@ -684,7 +788,7 @@ export default function AmbassadorDetailPage() {
       {activeTab === 'leads' && (
         <List empty="No leads yet">
           {leads.map((lead) => (
-            <Row key={lead.id} title={lead.customer_name} subtitle={lead.customer_phone} badge={lead.status} />
+            <Row key={lead.id} title={lead.customer_name || 'Unnamed lead'} subtitle={lead.customer_phone || 'No phone'} badge={lead.status} />
           ))}
         </List>
       )}
@@ -698,29 +802,131 @@ export default function AmbassadorDetailPage() {
       )}
 
       {activeTab === 'conversions' && (
-        <List empty="No conversions yet">
-          {conversions.map((conv) => (
-            <Row
-              key={conv.id}
-              title={formatCurrency(conv.amount)}
-              subtitle={`Commission: ${formatCurrency(conv.commission_amount)}`}
-              badge={formatDate(conv.approved_at)}
-            />
-          ))}
-        </List>
+        <Card className="rounded-3xl border-0 shadow-sm">
+          <CardContent className="p-0">
+            {conversions.length === 0 ? (
+              <p className="p-10 text-center text-slate-500">No conversions yet</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {conversions.map((conv) => {
+                  const percentage =
+                    conv.commission_percentage ??
+                    (conv.commission_rate ? conv.commission_rate * 100 : null);
+
+                  const isCommissionable = conv.is_commissionable !== false;
+                  const sequence = conv.conversion_sequence || 1;
+
+                  return (
+                    <div key={conv.id} className="p-5 hover:bg-slate-50">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-slate-900">
+                              Conversion #{sequence}
+                            </p>
+
+                            {conv.is_repeat_conversion && (
+                              <Badge variant="secondary">Repeat</Badge>
+                            )}
+
+                            {conv.admin_attention_required && (
+                              <Badge variant="warning">Review needed</Badge>
+                            )}
+
+                            {!isCommissionable && (
+                              <Badge variant="outline">No commission</Badge>
+                            )}
+                          </div>
+
+                          <p className="mt-1 text-sm text-slate-500">
+                            {formatDate(conv.approved_at)}
+                          </p>
+
+                          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                            <p>
+                              <span className="text-slate-500">Sale Amount:</span>{' '}
+                              <strong>{formatCurrency(conv.amount)}</strong>
+                            </p>
+
+                            <p>
+                              <span className="text-slate-500">Commission:</span>{' '}
+                              <strong>{formatCurrency(conv.commission_amount || 0)}</strong>
+                              {percentage !== null && isCommissionable ? ` (${percentage}%)` : ''}
+                            </p>
+                          </div>
+
+                          {conv.admin_attention_required && (
+                            <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                              This repeat conversion was saved without ambassador commission.
+                              Review whether commission should be added.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-emmy-primary">
+                            {formatCurrency(conv.amount)}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {isCommissionable ? 'Commission applied' : 'No commission'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {activeTab === 'payouts' && (
-        <List empty="No payouts yet">
-          {payouts.map((pay) => (
-            <Row
-              key={pay.id}
-              title={formatCurrency(pay.amount)}
-              subtitle={`${pay.points_paid} points paid`}
-              badge={pay.status}
-            />
-          ))}
-        </List>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="rounded-3xl border-0 shadow-sm">
+            <CardHeader>
+              <CardTitle>Payout History</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {payouts.length === 0 ? (
+                <p className="p-10 text-center text-slate-500">No payouts yet</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {payouts.map((pay) => (
+                    <Row
+                      key={pay.id}
+                      title={formatCurrency(pay.amount)}
+                      subtitle={pay.notes || 'Payout processed'}
+                      badge={pay.status}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border-0 shadow-sm">
+            <CardHeader>
+              <CardTitle>Bonus History</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {bonuses.length === 0 ? (
+                <p className="p-10 text-center text-slate-500">No bonuses yet</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {bonuses.map((bonus) => (
+                    <Row
+                      key={bonus.id}
+                      title={formatCurrency(bonus.amount)}
+                      subtitle={bonus.reason || 'Bonus added'}
+                      badge={formatDate(bonus.created_at)}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {showAddLead && (
@@ -746,35 +952,182 @@ export default function AmbassadorDetailPage() {
             onChange={(e) => setSelectedLeadId(e.target.value)}
           >
             <option value="">Select a lead</option>
-            {leads.filter((l) => l.status !== 'converted').map((lead) => (
-              <option key={lead.id} value={lead.id}>
-                {lead.customer_name} - {lead.customer_phone}
-              </option>
-            ))}
+            {leads.map((lead) => {
+              const leadConversionCount = conversions.filter(
+                (conversion) => conversion.lead_id === lead.id
+              ).length;
+
+              return (
+                <option key={lead.id} value={lead.id}>
+                  {lead.customer_name || 'Unnamed lead'} - {lead.customer_phone || 'No phone'}
+                  {leadConversionCount > 0 ? ` (${leadConversionCount} previous conversion${leadConversionCount > 1 ? 's' : ''})` : ''}
+                </option>
+              );
+            })}
           </select>
-          <Input type="number" placeholder="Sale Amount" value={conversionAmount} onChange={(e) => setConversionAmount(e.target.value)} />
+
+          {selectedLead && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="font-semibold text-slate-900">
+                {selectedLead.customer_name || 'Unnamed lead'}
+              </p>
+              <p className="text-slate-500">{selectedLead.customer_phone || 'No phone'}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                This will be conversion #{selectedLeadNextConversionNumber}.
+                {selectedLeadConversionCount > 0
+                  ? ' This is a repeat conversion for this lead.'
+                  : ' This is the first conversion for this lead.'}
+              </p>
+            </div>
+          )}
+
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Sale Amount"
+            value={conversionAmount}
+            onChange={(e) => setConversionAmount(e.target.value)}
+          />
+
+          <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={commissionEnabled}
+                onChange={(e) => setCommissionEnabled(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-semibold text-slate-900">
+                  Add ambassador commission
+                </span>
+                <span className="block text-xs text-slate-500">
+                  Untick this for repeat sales where the ambassador should not receive commission.
+                </span>
+              </span>
+            </label>
+
+            {commissionEnabled ? (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Percent className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Commission Percentage e.g. 5, 13.74, 15"
+                    value={commissionPercentage}
+                    onChange={(e) => setCommissionPercentage(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Estimated commission:{' '}
+                  <span className="font-semibold text-slate-900">
+                    {formatCurrency(Number.isFinite(previewCommission) ? previewCommission : 0)}
+                  </span>
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                No commission will be added. If this is a repeat conversion, it will be flagged for admin review.
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2">
-            <Button onClick={handleAddConversion} disabled={addingConversion || !selectedLeadId || !conversionAmount}>
+            <Button
+              onClick={handleAddConversion}
+              disabled={
+                addingConversion ||
+                !selectedLeadId ||
+                !conversionAmount ||
+                (commissionEnabled && !commissionPercentage)
+              }
+            >
               {addingConversion ? 'Adding...' : 'Add Conversion'}
             </Button>
-            <Button variant="ghost" onClick={() => setShowAddConversion(false)}>Cancel</Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowAddConversion(false);
+                setCommissionEnabled(true);
+              }}
+            >
+              Cancel
+            </Button>
           </div>
         </Modal>
       )}
 
       {showPayout && (
         <Modal title="Send Payout">
-          <Input type="number" placeholder="Amount" value={payoutAmount} onChange={(e) => setPayoutAmount(e.target.value)} />
-          <Input type="number" placeholder="Points to Deduct" value={payoutPoints} onChange={(e) => setPayoutPoints(e.target.value)} />
-          <Textarea placeholder="Notes optional" value={payoutNotes} onChange={(e) => setPayoutNotes(e.target.value)} />
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-700">
+            Current available balance: <strong>{formatCurrency(ambassador.available_balance)}</strong>
+          </div>
+
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Payout amount"
+            value={payoutAmount}
+            onChange={(e) => setPayoutAmount(e.target.value)}
+          />
+
+          <Textarea
+            placeholder="Payout note optional"
+            value={payoutNotes}
+            onChange={(e) => setPayoutNotes(e.target.value)}
+          />
+
           <div className="flex gap-2">
-            <Button onClick={handlePayout} disabled={processingPayout || !payoutAmount || !payoutPoints}>
+            <Button onClick={handlePayout} disabled={processingPayout || !payoutAmount}>
               {processingPayout ? 'Processing...' : 'Send Payout'}
             </Button>
             <Button variant="ghost" onClick={() => setShowPayout(false)}>Cancel</Button>
           </div>
         </Modal>
       )}
+
+      {showBonus && (
+        <Modal title="Add Bonus">
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Bonus amount"
+            value={bonusAmount}
+            onChange={(e) => setBonusAmount(e.target.value)}
+          />
+
+          <Textarea
+            placeholder="Reason for bonus"
+            value={bonusReason}
+            onChange={(e) => setBonusReason(e.target.value)}
+          />
+
+          <div className="flex gap-2">
+            <Button onClick={handleAddBonus} disabled={addingBonus || !bonusAmount}>
+              {addingBonus ? 'Adding...' : 'Add Bonus'}
+            </Button>
+            <Button variant="ghost" onClick={() => setShowBonus(false)}>Cancel</Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-2xl bg-white/10 p-4 backdrop-blur">
+      <p className="truncate text-sm text-blue-100">{label}</p>
+      <p className="mt-1 break-words text-xl font-bold leading-tight sm:text-2xl">
+        {value}
+      </p>
     </div>
   );
 }
@@ -783,7 +1136,7 @@ function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-slate-50 p-4">
       <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-1 font-semibold text-slate-900 break-words">{value}</p>
+      <p className="mt-1 break-words font-semibold text-slate-900">{value}</p>
     </div>
   );
 }
@@ -841,7 +1194,7 @@ function Row({
     <div className="flex items-center justify-between p-5 hover:bg-slate-50">
       <div>
         <p className="font-semibold text-slate-900">{title}</p>
-        <p className="text-sm text-slate-500 break-all">{subtitle}</p>
+        <p className="break-all text-sm text-slate-500">{subtitle}</p>
       </div>
       <Badge variant="secondary">{badge}</Badge>
     </div>

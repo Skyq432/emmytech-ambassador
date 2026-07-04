@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { formatDate, POINT_VALUES } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import {
   Share2,
   Camera,
@@ -37,7 +37,6 @@ interface Activity {
   caption: string | null;
   submitted_at: string;
   status: 'pending_review' | 'approved' | 'rejected';
-  points_awarded: number | null;
   rejection_reason: string | null;
 }
 
@@ -46,6 +45,7 @@ const platformIcons: Record<string, React.ComponentType<{ className?: string }>>
   twitter: MessageSquare,
   tiktok: Video,
   threads: MessageSquare,
+  facebook: MessageSquare,
 };
 
 const platformColors: Record<string, string> = {
@@ -53,6 +53,7 @@ const platformColors: Record<string, string> = {
   twitter: 'bg-blue-100 text-blue-700',
   tiktok: 'bg-black/10 text-slate-900',
   threads: 'bg-slate-100 text-slate-700',
+  facebook: 'bg-blue-100 text-blue-700',
 };
 
 export default function ActivityPage() {
@@ -136,9 +137,9 @@ export default function ActivityPage() {
     return matchesSearch && matchesFilter;
   });
 
-  const totalPoints = activities
-    .filter((a) => a.status === 'approved')
-    .reduce((sum, a) => sum + (a.points_awarded || POINT_VALUES.post), 0);
+  const approvedCount = activities.filter(
+    (a) => a.status === 'approved'
+  ).length;
 
   const pendingCount = activities.filter(
     (a) => a.status === 'pending_review'
@@ -205,9 +206,9 @@ export default function ActivityPage() {
 
         <StatCard
           icon={CheckCircle}
-          title="Points Earned"
-          value={totalPoints}
-          color="bg-emmy-secondary/10 text-emmy-secondary"
+          title="Approved Posts"
+          value={approvedCount}
+          color="bg-emerald-100 text-emerald-700"
         />
 
         <StatCard
@@ -258,7 +259,7 @@ export default function ActivityPage() {
               <p className="text-slate-500">No posts found</p>
               <p className="mt-1 text-sm text-slate-400">
                 {activities.length === 0
-                  ? 'Submit your first post to start earning points.'
+                  ? 'Submit your first post for admin review.'
                   : 'Try adjusting your search or filter.'}
               </p>
             </CardContent>
@@ -291,14 +292,6 @@ export default function ActivityPage() {
 
                         {getStatusBadge(activity.status)}
 
-                        {(activity.points_awarded || 0) > 0 && (
-                          <Badge
-                            variant="secondary"
-                            className="text-emmy-secondary"
-                          >
-                            +{activity.points_awarded} pts
-                          </Badge>
-                        )}
                       </div>
 
                       <p className="mt-2 line-clamp-3 text-sm text-slate-700">

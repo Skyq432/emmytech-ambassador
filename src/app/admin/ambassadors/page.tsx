@@ -13,11 +13,11 @@ import {
   UserPlus,
   TrendingUp,
   Users,
-  Award,
   ChevronRight,
   UserX,
+  Wallet,
 } from 'lucide-react';
-import { formatCurrency, formatNumber } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import Link from 'next/link';
 
 interface Ambassador {
@@ -27,7 +27,6 @@ interface Ambassador {
   email: string;
   avatar_url: string | null;
   ambassador_tag: string;
-  total_points: number;
   total_leads: number;
   total_conversions: number;
   available_balance: number;
@@ -36,17 +35,13 @@ interface Ambassador {
   created_at: string;
 }
 
-type SortField =
-  | 'total_points'
-  | 'total_leads'
-  | 'total_conversions'
-  | 'available_balance';
+type SortField = 'total_leads' | 'total_conversions' | 'available_balance';
 
 export default function AdminAmbassadorsPage() {
   const [ambassadors, setAmbassadors] = useState<Ambassador[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<SortField>('total_points');
+  const [sortBy, setSortBy] = useState<SortField>('total_leads');
 
   const supabase = createClient();
 
@@ -60,7 +55,8 @@ export default function AdminAmbassadorsPage() {
         .from('ambassadors')
         .select('*, users(name, email, avatar_url)')
         .neq('status', 'deleted')
-        .order('total_points', { ascending: false });
+        .order('total_leads', { ascending: false })
+        .order('total_conversions', { ascending: false });
 
       if (error) throw error;
 
@@ -107,7 +103,7 @@ export default function AdminAmbassadorsPage() {
             Ambassadors
           </h1>
           <p className="text-sm text-muted-foreground sm:text-base">
-            Manage and track all ambassadors.
+            Manage and track ambassador performance.
           </p>
         </div>
 
@@ -142,7 +138,6 @@ export default function AdminAmbassadorsPage() {
 
         <div className="flex gap-2 overflow-x-auto pb-1">
           {[
-            { key: 'total_points' as SortField, label: 'Points' },
             { key: 'total_leads' as SortField, label: 'Leads' },
             { key: 'total_conversions' as SortField, label: 'Conversions' },
             { key: 'available_balance' as SortField, label: 'Balance' },
@@ -213,13 +208,6 @@ export default function AdminAmbassadorsPage() {
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <Metric
-                    icon={Award}
-                    label="Points"
-                    value={formatNumber(amb.total_points)}
-                    iconClass="text-amber-500"
-                  />
-
-                  <Metric
                     icon={Users}
                     label="Leads"
                     value={String(amb.total_leads || 0)}
@@ -239,13 +227,16 @@ export default function AdminAmbassadorsPage() {
                     value={formatCurrency(amb.available_balance)}
                     iconClass="text-violet-500"
                   />
+
+                  <Metric
+                    icon={Wallet}
+                    label="Paid Out"
+                    value={formatCurrency(amb.total_cashed_out)}
+                    iconClass="text-slate-500"
+                  />
                 </div>
 
-                <div className="mt-4 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Cashed out: {formatCurrency(amb.total_cashed_out)}
-                  </p>
-
+                <div className="mt-4 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-end">
                   <Link
                     href={`/admin/ambassadors/${amb.id}`}
                     className="w-full sm:w-auto"

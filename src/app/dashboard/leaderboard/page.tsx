@@ -3,14 +3,15 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
-import { Trophy, Medal, Award } from 'lucide-react';
+import { Trophy, Medal, Award, Users, TrendingUp } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 
 interface LeaderboardEntry {
   rank: number;
   id: string;
   full_name: string;
-  total_points: number;
+  total_leads: number;
+  total_conversions: number;
 }
 
 export default function LeaderboardPage() {
@@ -26,12 +27,14 @@ export default function LeaderboardPage() {
         .select(`
           id,
           ambassador_tag,
-          total_points,
+          total_leads,
+          total_conversions,
           status,
           users(name)
         `)
         .eq('status', 'active')
-        .order('total_points', { ascending: false });
+        .order('total_leads', { ascending: false })
+        .order('total_conversions', { ascending: false });
 
       if (error) {
         console.error('Error loading leaderboard:', error);
@@ -44,7 +47,8 @@ export default function LeaderboardPage() {
         rank: index + 1,
         id: entry.id,
         full_name: entry.users?.name || entry.ambassador_tag || 'Ambassador',
-        total_points: entry.total_points || 0,
+        total_leads: entry.total_leads || 0,
+        total_conversions: entry.total_conversions || 0,
       }));
 
       setEntries(ranked);
@@ -72,7 +76,7 @@ export default function LeaderboardPage() {
           Leaderboard
         </h1>
         <p className="mt-1 text-sm text-slate-500 sm:text-base">
-          Ambassador ranking by points.
+          Ambassador ranking by leads first, then conversions.
         </p>
       </div>
 
@@ -145,9 +149,11 @@ function TopRankCard({ entry }: { entry: LeaderboardEntry }) {
 
           <div className="text-right sm:text-center">
             <p className="text-xl font-bold text-emmy-primary">
-              {formatNumber(entry.total_points)}
+              {formatNumber(entry.total_leads)}
             </p>
-            <p className="text-xs text-slate-500">points</p>
+            <p className="text-xs text-slate-500">
+              leads · {formatNumber(entry.total_conversions)} conversions
+            </p>
           </div>
         </div>
       </CardContent>
@@ -168,11 +174,26 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
         </p>
       </div>
 
-      <div className="shrink-0 text-right">
-        <p className="text-lg font-bold text-emmy-primary sm:text-xl">
-          {formatNumber(entry.total_points)}
-        </p>
-        <p className="text-xs text-slate-500">points</p>
+      <div className="grid shrink-0 grid-cols-2 gap-4 text-right">
+        <div>
+          <div className="flex items-center justify-end gap-1 text-emmy-primary">
+            <Users className="h-4 w-4" />
+            <p className="text-lg font-bold sm:text-xl">
+              {formatNumber(entry.total_leads)}
+            </p>
+          </div>
+          <p className="text-xs text-slate-500">leads</p>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-end gap-1 text-emerald-600">
+            <TrendingUp className="h-4 w-4" />
+            <p className="text-lg font-bold sm:text-xl">
+              {formatNumber(entry.total_conversions)}
+            </p>
+          </div>
+          <p className="text-xs text-slate-500">conversions</p>
+        </div>
       </div>
     </div>
   );

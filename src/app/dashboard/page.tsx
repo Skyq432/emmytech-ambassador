@@ -6,7 +6,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Trophy,
   Users,
   TrendingUp,
   MessageCircle,
@@ -16,6 +15,8 @@ import {
   Plus,
   ArrowRight,
   DollarSign,
+  Wallet,
+  Trophy,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -26,7 +27,6 @@ interface AmbassadorData {
   referral_code: string;
   custom_referral_code: string | null;
   whatsapp_link: string;
-  total_points: number;
   total_leads: number;
   total_conversions: number;
   available_balance: number;
@@ -47,9 +47,6 @@ export default function AmbassadorDashboard() {
 
   const buildReferralLink = (ambData: AmbassadorData) => {
     const code = ambData.custom_referral_code || ambData.referral_code;
-
-  
-
     return `https://ambassador.emmytechnology.com/r/${code}`;
   };
 
@@ -81,7 +78,8 @@ export default function AmbassadorDashboard() {
         const { count: leadsCount } = await supabase
           .from('leads')
           .select('*', { count: 'exact', head: true })
-          .eq('ambassador_id', ambData.id);
+          .eq('ambassador_id', ambData.id)
+          .is('merged_into_lead_id', null);
 
         setActualLeads(leadsCount || 0);
       }
@@ -118,12 +116,6 @@ export default function AmbassadorDashboard() {
 
   const stats = [
     {
-      label: 'Points',
-      value: ambassador.total_points.toLocaleString(),
-      icon: Trophy,
-      color: 'bg-amber-50 text-amber-600',
-    },
-    {
       label: 'Leads',
       value: actualLeads.toString(),
       icon: Users,
@@ -140,6 +132,12 @@ export default function AmbassadorDashboard() {
       value: `₦${(ambassador.available_balance || 0).toLocaleString()}`,
       icon: DollarSign,
       color: 'bg-violet-50 text-violet-600',
+    },
+    {
+      label: 'Paid Out',
+      value: `₦${(ambassador.total_cashed_out || 0).toLocaleString()}`,
+      icon: Wallet,
+      color: 'bg-slate-100 text-slate-700',
     },
   ];
 
