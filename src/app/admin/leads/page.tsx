@@ -17,7 +17,6 @@ import {
   Save,
   X,
   Bell,
-  Eye,
   Mail,
   User,
   Clock,
@@ -29,6 +28,7 @@ import {
   Percent,
   DollarSign,
   MoreHorizontal,
+  Copy,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
@@ -53,6 +53,11 @@ interface Lead {
   edit_status: EditStatus;
   pending_customer_name: string | null;
   pending_customer_phone: string | null;
+  conversation_greeting: string | null;
+  conversation_opening: string | null;
+  conversation_closing: string | null;
+  conversation_message: string | null;
+  conversation_fingerprint: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -70,6 +75,36 @@ interface Conversion {
   is_commissionable: boolean | null;
   admin_attention_required: boolean | null;
   approved_at: string;
+}
+
+function normalizeSearchText(value: string | null | undefined) {
+  return (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function getLeadDisplayName(lead: Lead) {
+  if (
+    lead.customer_name &&
+    lead.customer_name.toLowerCase() !== 'whatsapp lead'
+  ) {
+    return lead.customer_name;
+  }
+
+  if (lead.source === 'whatsapp') {
+    return 'New WhatsApp Enquiry';
+  }
+
+  return lead.customer_phone || 'New Lead';
+}
+
+function getConversationStart(lead: Lead) {
+  return [lead.conversation_greeting, lead.conversation_opening]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function getConversationPreview(lead: Lead) {
+  const message = lead.conversation_message || getConversationStart(lead);
+  return message || '';
 }
 
 export default function AdminLeadsPage() {
@@ -105,6 +140,7 @@ export default function AdminLeadsPage() {
 
   useEffect(() => {
     fetchPageData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchPageData() {
@@ -155,6 +191,11 @@ export default function AdminLeadsPage() {
           edit_status: lead.edit_status || 'none',
           pending_customer_name: lead.pending_customer_name,
           pending_customer_phone: lead.pending_customer_phone,
+          conversation_greeting: lead.conversation_greeting || null,
+          conversation_opening: lead.conversation_opening || null,
+          conversation_closing: lead.conversation_closing || null,
+          conversation_message: lead.conversation_message || null,
+          conversation_fingerprint: lead.conversation_fingerprint || null,
           created_at: lead.created_at,
           updated_at: lead.updated_at,
         }))
@@ -224,6 +265,14 @@ export default function AdminLeadsPage() {
   function openCommissionReview(conversion: Conversion) {
     setCommissionReview(conversion);
     setReviewCommissionPercentage('5');
+  }
+
+  async function copyText(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      alert('Unable to copy text.');
+    }
   }
 
   async function saveLeadUpdate() {
@@ -436,16 +485,26 @@ export default function AdminLeadsPage() {
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      const searchTerm = search.toLowerCase();
+      const searchTerm = normalizeSearchText(search);
+      const conversationStart = normalizeSearchText(getConversationStart(lead));
+      const conversationMessage = normalizeSearchText(lead.conversation_message);
 
       const matchesSearch =
-        (lead.customer_phone || '').toLowerCase().includes(searchTerm) ||
-        lead.ambassador_name.toLowerCase().includes(searchTerm) ||
-        lead.ambassador_tag.toLowerCase().includes(searchTerm) ||
-        lead.source.toLowerCase().includes(searchTerm) ||
-        (lead.customer_name?.toLowerCase().includes(searchTerm) || false) ||
-        (lead.customer_email?.toLowerCase().includes(searchTerm) || false) ||
-        (lead.lead_code?.toLowerCase().includes(searchTerm) || false);
+        !searchTerm ||
+        normalizeSearchText(lead.customer_phone).includes(searchTerm) ||
+        normalizeSearchText(lead.ambassador_name).includes(searchTerm) ||
+        normalizeSearchText(lead.ambassador_tag).includes(searchTerm) ||
+        normalizeSearchText(lead.source).includes(searchTerm) ||
+        normalizeSearchText(lead.customer_name).includes(searchTerm) ||
+        normalizeSearchText(lead.customer_email).includes(searchTerm) ||
+        normalizeSearchText(lead.lead_code).includes(searchTerm) ||
+        normalizeSearchText(lead.conversation_greeting).includes(searchTerm) ||
+        normalizeSearchText(lead.conversation_opening).includes(searchTerm) ||
+        normalizeSearchText(lead.conversation_closing).includes(searchTerm) ||
+        normalizeSearchText(lead.conversation_fingerprint).includes(searchTerm) ||
+        conversationMessage.includes(searchTerm) ||
+        searchTerm.includes(conversationStart) ||
+        searchTerm.includes(conversationMessage);
 
       const matchesFilter =
         filter === 'all' ||
@@ -499,7 +558,7 @@ export default function AdminLeadsPage() {
             Lead Management
           </h1>
           <p className="mt-1 text-sm text-slate-500 sm:text-base">
-            Manage leads, updates, conversions, and reviews from one place.
+            Manage enquiries, updates, conversions, and reviews from one clean workspace.
           </p>
         </div>
 
@@ -522,7 +581,7 @@ export default function AdminLeadsPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
-            placeholder="Search by name, phone, ambassador, lead ID, source..."
+            placeholder="Paste WhatsApp message, or search by name, phone, lead ID, ambassador..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="pl-9"
@@ -558,7 +617,6 @@ export default function AdminLeadsPage() {
                 const status = statusConfig[lead.status] || statusConfig.new;
                 const leadConversions = getLeadConversions(lead.id);
                 const needsAttention = leadNeedsAttention(lead);
-
                 return (
                   <div
                     key={lead.id}
@@ -569,14 +627,26 @@ export default function AdminLeadsPage() {
 
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-slate-900">
-                          {lead.customer_name || lead.customer_phone || 'Anonymous Lead'}
+                          {getLeadDisplayName(lead)}
                         </p>
-                        <p className="truncate text-sm text-slate-500">
-                          {lead.customer_phone || 'No phone yet'}
+
+                        <p className="mt-1 truncate text-sm text-slate-500">
+                          {lead.customer_phone && lead.customer_phone !== 'Not provided'
+                            ? lead.customer_phone
+                            : 'Phone not yet provided'}
                         </p>
-                        <p className="truncate text-xs text-slate-400">
-                          {lead.lead_code || 'No lead ID yet'}
-                        </p>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-medium text-slate-400">
+                            {lead.lead_code || 'No lead ID yet'}
+                          </span>
+
+                          {lead.conversation_message && (
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
+                              WhatsApp match ready
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -599,6 +669,10 @@ export default function AdminLeadsPage() {
                       ) : (
                         <p className="text-xs text-slate-500">No pending issue</p>
                       )}
+
+                      <p className="mt-1 text-xs text-slate-400">
+                        {lead.click_count || 0} click{Number(lead.click_count || 0) === 1 ? '' : 's'}
+                      </p>
                     </div>
 
                     <div className="flex items-center justify-between gap-3 lg:justify-end">
@@ -639,6 +713,7 @@ export default function AdminLeadsPage() {
           onConvert={() => openConversionModal(manageLead)}
           onMarkReviewed={markConversionReviewed}
           onAddCommission={openCommissionReview}
+          onCopy={copyText}
         />
       )}
 
@@ -755,6 +830,7 @@ function ManageLeadModal({
   onConvert,
   onMarkReviewed,
   onAddCommission,
+  onCopy,
 }: {
   lead: Lead;
   conversions: Conversion[];
@@ -769,8 +845,10 @@ function ManageLeadModal({
   onConvert: () => void;
   onMarkReviewed: (conversion: Conversion) => void;
   onAddCommission: (conversion: Conversion) => void;
+  onCopy: (value: string) => void;
 }) {
   const attentionConversions = conversions.filter((conversion) => conversion.admin_attention_required);
+  const conversationMessage = getConversationPreview(lead);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
@@ -787,7 +865,7 @@ function ManageLeadModal({
                 {attentionConversions.length > 0 && <AttentionBadge label="Conversion review" danger />}
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                All lead actions are handled here: review, edit, convert, and resolve.
+                Match WhatsApp enquiries, edit details, convert leads, and resolve reviews.
               </p>
             </div>
 
@@ -795,6 +873,47 @@ function ManageLeadModal({
               <X className="h-5 w-5" />
             </button>
           </div>
+
+          {conversationMessage && (
+            <Section title="WhatsApp Conversation Match">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-500">
+                    Use this only when matching a WhatsApp chat to this lead
+                  </p>
+
+                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-800">
+                    {conversationMessage}
+                  </p>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onCopy(conversationMessage)}
+                      className="gap-2"
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy Message
+                    </Button>
+
+                    {lead.conversation_fingerprint && (
+                      <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-500">
+                        {lead.conversation_fingerprint}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <CompareBox label="Greeting" value={lead.conversation_greeting || 'Not recorded'} highlight />
+                  <CompareBox label="Opening" value={lead.conversation_opening || 'Not recorded'} />
+                  <CompareBox label="Closing" value={lead.conversation_closing || 'Not recorded'} />
+                </div>
+              </div>
+            </Section>
+          )}
 
           {lead.edit_status === 'pending' && (
             <Section title="Pending Ambassador Update" tone="warning">
@@ -960,7 +1079,7 @@ function ConversionModal({
           <ModalHeader title="Add Conversion" subtitle="Add a sale conversion for this lead." onClose={onClose} />
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="font-semibold text-slate-900">{lead.customer_name || 'Unnamed lead'}</p>
+            <p className="font-semibold text-slate-900">{getLeadDisplayName(lead)}</p>
             <p className="text-sm text-slate-500">{lead.customer_phone || 'No phone'}</p>
             <p className="mt-2 text-xs text-slate-500">
               This will be conversion #{previousConversions + 1}.

@@ -9,11 +9,29 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const VISITOR_COOKIE_NAME = 'emmytech_visitor_id';
 
-const FALLBACK_WHATSAPP_LINK =
-  'https://wa.me/2348146503700?text=Hello%20EmmyTech%2C%20I%20want%20to%20make%20an%20enquiry.';
+const FALLBACK_MESSAGE =
+  'Hello EmmyTech,\n\nI would like to make an enquiry about your services.\n\nKindly let me know the next step.';
+
+const FALLBACK_WHATSAPP_NUMBER = '2348146503700';
 
 function createVisitorId() {
   return crypto.randomUUID();
+}
+
+function buildWhatsappLink(phoneOrLink: string | null, message: string) {
+  const encodedMessage = encodeURIComponent(message);
+
+  if (!phoneOrLink) {
+    return `https://wa.me/${FALLBACK_WHATSAPP_NUMBER}?text=${encodedMessage}`;
+  }
+
+  if (phoneOrLink.includes('wa.me')) {
+    const baseUrl = phoneOrLink.split('?')[0];
+    return `${baseUrl}?text=${encodedMessage}`;
+  }
+
+  const cleanPhone = phoneOrLink.replace(/\D/g, '');
+  return `https://wa.me/${cleanPhone || FALLBACK_WHATSAPP_NUMBER}?text=${encodedMessage}`;
 }
 
 async function writeRouteLog(
@@ -64,23 +82,13 @@ export async function GET(
   const visitorId = existingVisitorId || createVisitorId();
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return redirectWithVisitorCookie(FALLBACK_WHATSAPP_LINK, visitorId);
+    const fallbackUrl = buildWhatsappLink(null, FALLBACK_MESSAGE);
+    return redirectWithVisitorCookie(fallbackUrl, visitorId);
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   try {
-    await writeRouteLog(
-      supabase,
-      cleanCode,
-      'route_started',
-      'Referral route started',
-      {
-        visitor_id: visitorId,
-        had_existing_cookie: Boolean(existingVisitorId),
-      }
-    );
-
     const ipAddress =
       request.headers.get('x-forwarded-for') ||
       request.headers.get('x-real-ip') ||
@@ -88,17 +96,12 @@ export async function GET(
 
     const userAgent = request.headers.get('user-agent') || null;
 
-    await writeRouteLog(
-      supabase,
-      cleanCode,
-      'request_info',
-      'Captured request info',
-      {
-        ipAddress,
-        userAgent,
-        visitor_id: visitorId,
-      }
-    );
+    await writeRouteLog(supabase, cleanCode, 'route_started', 'Referral route started', {
+      visitor_id: visitorId,
+      had_existing_cookie: Boolean(existingVisitorId),
+      ipAddress,
+      userAgent,
+    });
 
     const { data: ambassadors, error: ambassadorError } = await supabase
       .from('ambassadors')
@@ -113,7 +116,8 @@ export async function GET(
         ambassadorError.message
       );
 
-      return redirectWithVisitorCookie(FALLBACK_WHATSAPP_LINK, visitorId);
+      const fallbackUrl = buildWhatsappLink(null, FALLBACK_MESSAGE);
+      return redirectWithVisitorCookie(fallbackUrl, visitorId);
     }
 
     const ambassador = (ambassadors || []).find((item: any) => {
@@ -137,26 +141,14 @@ export async function GET(
         }
       );
 
-      return redirectWithVisitorCookie(FALLBACK_WHATSAPP_LINK, visitorId);
+      const fallbackUrl = buildWhatsappLink(null, FALLBACK_MESSAGE);
+      return redirectWithVisitorCookie(fallbackUrl, visitorId);
     }
-
-    await writeRouteLog(
-      supabase,
-      cleanCode,
-      'ambassador_found',
-      'Active ambassador found',
-      {
-        ambassador_id: ambassador.id,
-        referral_code: ambassador.referral_code,
-        custom_referral_code: ambassador.custom_referral_code,
-        visitor_id: visitorId,
-      }
-    );
 
     const referralCodeToTrack =
       ambassador.custom_referral_code || ambassador.referral_code || cleanCode;
 
-    const { error: rpcError } = await supabase.rpc(
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
       'track_whatsapp_referral_click_v2',
       {
         p_referral_code: referralCodeToTrack,
@@ -178,23 +170,38 @@ export async function GET(
           visitor_id: visitorId,
         }
       );
-    } else {
-      await writeRouteLog(
-        supabase,
-        cleanCode,
-        'rpc_success',
-        'Referral click tracked successfully',
-        {
-          referral_code_to_track: referralCodeToTrack,
-          visitor_id: visitorId,
-        }
+
+      const fallbackUrl = buildWhatsappLink(
+        ambassador.whatsapp_link,
+        FALLBACK_MESSAGE
       );
+
+      return redirectWithVisitorCookie(fallbackUrl, visitorId);
     }
 
-    return redirectWithVisitorCookie(
-      ambassador.whatsapp_link || FALLBACK_WHATSAPP_LINK,
-      visitorId
+    const conversationMessage =
+      rpcData?.conversation_message || FALLBACK_MESSAGE;
+
+    await writeRouteLog(
+      supabase,
+      cleanCode,
+      'rpc_success',
+      'Referral click tracked successfully',
+      {
+        referral_code_to_track: referralCodeToTrack,
+        visitor_id: visitorId,
+        lead_code: rpcData?.lead_code,
+        is_new_lead: rpcData?.is_new_lead,
+        conversation_fingerprint: rpcData?.conversation_fingerprint,
+      }
     );
+
+    const whatsappUrl = buildWhatsappLink(
+      ambassador.whatsapp_link,
+      conversationMessage
+    );
+
+    return redirectWithVisitorCookie(whatsappUrl, visitorId);
   } catch (error: any) {
     await writeRouteLog(
       supabase,
@@ -206,6 +213,7 @@ export async function GET(
       }
     );
 
-    return redirectWithVisitorCookie(FALLBACK_WHATSAPP_LINK, visitorId);
+    const fallbackUrl = buildWhatsappLink(null, FALLBACK_MESSAGE);
+    return redirectWithVisitorCookie(fallbackUrl, visitorId);
   }
 }
