@@ -8,7 +8,6 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const VISITOR_COOKIE_NAME = 'emmytech_visitor_id';
-
 const FALLBACK_WHATSAPP_NUMBER = '2348146503700';
 
 const referralMessages = [
@@ -39,7 +38,6 @@ function extractWhatsappNumber(whatsappLink?: string | null) {
   if (!whatsappLink) return FALLBACK_WHATSAPP_NUMBER;
 
   const match = whatsappLink.match(/wa\.me\/(\d+)/);
-
   return match?.[1] || FALLBACK_WHATSAPP_NUMBER;
 }
 
@@ -96,10 +94,8 @@ export async function GET(
   const visitorId = existingVisitorId || createVisitorId();
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    const fallbackMessage =
-      'Hello Emmytechnology, I would like to know more.';
     return redirectWithVisitorCookie(
-      buildWhatsappLink(null, fallbackMessage),
+      buildWhatsappLink(null, 'Hello Emmytechnology, I would like to know more.'),
       visitorId
     );
   }
@@ -114,16 +110,24 @@ export async function GET(
 
     const userAgent = request.headers.get('user-agent') || null;
 
-    await writeRouteLog(supabase, cleanCode, 'route_started', 'Referral route started', {
-      visitor_id: visitorId,
-      had_existing_cookie: Boolean(existingVisitorId),
-      ipAddress,
-      userAgent,
-    });
+    await writeRouteLog(
+      supabase,
+      cleanCode,
+      'route_started',
+      'Referral route started',
+      {
+        visitor_id: visitorId,
+        had_existing_cookie: Boolean(existingVisitorId),
+        ipAddress,
+        userAgent,
+      }
+    );
 
     const { data: ambassadors, error: ambassadorError } = await supabase
       .from('ambassadors')
-      .select('id, referral_code, custom_referral_code, status, whatsapp_link, users(name)')
+      .select(
+        'id, referral_code, custom_referral_code, ambassador_tag, display_name, status, whatsapp_link'
+      )
       .eq('status', 'active');
 
     if (ambassadorError) {
@@ -163,12 +167,10 @@ export async function GET(
       );
     }
 
-const linkedUser = Array.isArray(ambassador.users)
-  ? ambassador.users[0]
-  : ambassador.users;
-
-const ambassadorName =
-  linkedUser?.name || 'an EmmyTech ambassador';
+    const ambassadorName =
+      ambassador.display_name ||
+      ambassador.ambassador_tag?.replace('#', '') ||
+      'an EmmyTech ambassador';
 
     const referralCodeToTrack =
       ambassador.custom_referral_code || ambassador.referral_code || cleanCode;
