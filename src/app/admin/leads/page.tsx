@@ -34,6 +34,7 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 
 type LeadStatus = 'new' | 'pending' | 'contacted' | 'converted' | 'lost';
 type EditStatus = 'none' | 'pending' | 'approved' | 'rejected' | null;
+type LeadApprovalStatus = 'pending' | 'approved' | 'rejected' | null;
 
 interface Lead {
   id: string;
@@ -47,6 +48,9 @@ interface Lead {
   customer_email: string | null;
   referral_code_used: string | null;
   status: LeadStatus;
+  lead_approval_status: LeadApprovalStatus;
+  approved_as_lead: boolean | null;
+  approved_at: string | null;
   notes: string | null;
   click_count: number | null;
   last_clicked_at: string | null;
@@ -185,6 +189,9 @@ export default function AdminLeadsPage() {
           customer_email: lead.customer_email,
           referral_code_used: lead.referral_code_used,
           status: normalizeStatus(lead.status),
+          lead_approval_status: lead.lead_approval_status || 'pending',
+          approved_as_lead: Boolean(lead.approved_as_lead),
+          approved_at: lead.approved_at || null,
           notes: lead.notes,
           click_count: lead.click_count || 0,
           last_clicked_at: lead.last_clicked_at,
@@ -226,6 +233,7 @@ export default function AdminLeadsPage() {
   function leadNeedsAttention(lead: Lead) {
     return (
       lead.edit_status === 'pending' ||
+      lead.lead_approval_status === 'pending' ||
       getLeadConversions(lead.id).some((conversion) => conversion.admin_attention_required)
     );
   }
@@ -363,6 +371,79 @@ export default function AdminLeadsPage() {
     }
   }
 
+
+  async function approveLeadForAmbassador(lead: Lead) {
+    const confirmed = window.confirm(
+      'Approve this pending lead? This will count it as a real lead for the ambassador.'
+    );
+
+    if (!confirmed) return;
+
+    setApprovalLoading(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const { error } = await supabase.rpc('approve_lead_for_ambassador', {
+        p_admin_id: session.user.id,
+        p_lead_id: lead.id,
+      });
+
+      if (error) throw error;
+
+      await fetchPageData();
+      setManageLead(null);
+    } catch (err: any) {
+      alert(err.message || 'Unable to approve lead.');
+    } finally {
+      setApprovalLoading(false);
+    }
+  }
+
+
+  async function rejectLeadForAmbassador(lead: Lead) {
+    const reason = window.prompt(
+      'Why are you rejecting this lead? Example: duplicate click, wrong customer, not genuine, no response.'
+    );
+
+    if (reason === null) return;
+
+    const confirmed = window.confirm(
+      'Reject this lead? It will not count for the ambassador, but the identity and history will remain saved.'
+    );
+
+    if (!confirmed) return;
+
+    setApprovalLoading(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) throw new Error('Not authenticated');
+
+      const { error } = await supabase.rpc('reject_lead_for_ambassador', {
+        p_admin_id: session.user.id,
+        p_lead_id: lead.id,
+        p_reason: reason.trim() || null,
+      });
+
+      if (error) throw error;
+
+      await fetchPageData();
+      setManageLead(null);
+    } catch (err: any) {
+      alert(err.message || 'Unable to reject lead.');
+    } finally {
+      setApprovalLoading(false);
+    }
+  }
+
   async function handleConvertLead() {
     if (!conversionLead || !conversionAmount) return;
 
@@ -486,25 +567,30 @@ export default function AdminLeadsPage() {
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
       const searchTerm = normalizeSearchText(search);
-      const conversationStart = normalizeSearchText(getConversationStart(lead));
-      const conversationMessage = normalizeSearchText(lead.conversation_message);
+
+      const searchableFields = [
+        lead.customer_phone,
+        lead.ambassador_name,
+        lead.ambassador_tag,
+        lead.source,
+        lead.customer_name,
+        lead.customer_email,
+        lead.lead_code,
+        lead.referral_code_used,
+        lead.notes,
+        lead.conversation_greeting,
+        lead.conversation_opening,
+        lead.conversation_closing,
+        lead.conversation_message,
+        lead.conversation_fingerprint,
+      ]
+        .map(normalizeSearchText)
+        .filter(Boolean);
 
       const matchesSearch =
         !searchTerm ||
-        normalizeSearchText(lead.customer_phone).includes(searchTerm) ||
-        normalizeSearchText(lead.ambassador_name).includes(searchTerm) ||
-        normalizeSearchText(lead.ambassador_tag).includes(searchTerm) ||
-        normalizeSearchText(lead.source).includes(searchTerm) ||
-        normalizeSearchText(lead.customer_name).includes(searchTerm) ||
-        normalizeSearchText(lead.customer_email).includes(searchTerm) ||
-        normalizeSearchText(lead.lead_code).includes(searchTerm) ||
-        normalizeSearchText(lead.conversation_greeting).includes(searchTerm) ||
-        normalizeSearchText(lead.conversation_opening).includes(searchTerm) ||
-        normalizeSearchText(lead.conversation_closing).includes(searchTerm) ||
-        normalizeSearchText(lead.conversation_fingerprint).includes(searchTerm) ||
-        conversationMessage.includes(searchTerm) ||
-        searchTerm.includes(conversationStart) ||
-        searchTerm.includes(conversationMessage);
+        searchableFields.some((field) => field.includes(searchTerm)) ||
+        searchableFields.some((field) => searchTerm.includes(field) && field.length >= 8);
 
       const matchesFilter =
         filter === 'all' ||
@@ -517,7 +603,9 @@ export default function AdminLeadsPage() {
   }, [leads, conversions, search, filter]);
 
   const totalLeads = leads.length;
-  const newLeads = leads.filter((lead) => lead.status === 'new' || lead.status === 'pending').length;
+  const approvedLeads = leads.filter((lead) => lead.approved_as_lead === true).length;
+  const pendingApprovalLeads = leads.filter((lead) => lead.lead_approval_status === 'pending').length;
+  const rejectedLeads = leads.filter((lead) => lead.lead_approval_status === 'rejected').length;
   const convertedLeads = leads.filter((lead) => lead.status === 'converted').length;
   const attentionCount = leads.filter((lead) => leadNeedsAttention(lead)).length;
 
@@ -570,25 +658,28 @@ export default function AdminLeadsPage() {
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={Users} title="Total Leads" value={totalLeads} />
-        <StatCard icon={MessageCircle} title="New / Pending" value={newLeads} />
-        <StatCard icon={CheckCircle} title="Converted" value={convertedLeads} />
-        <StatCard icon={AlertCircle} title="Needs Attention" value={attentionCount} alert={attentionCount > 0} />
-      </div>
+      <CompactLeadSummary
+        totalLeads={totalLeads}
+        approvedLeads={approvedLeads}
+        pendingApprovalLeads={pendingApprovalLeads}
+        rejectedLeads={rejectedLeads}
+        convertedLeads={convertedLeads}
+        attentionCount={attentionCount}
+        onAttentionClick={() => setFilter('attention')}
+      />
 
-      <div className="space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
-            placeholder="Paste WhatsApp message, or search by name, phone, lead ID, ambassador..."
+            placeholder="Search name, phone, lead ID, ambassador, or paste WhatsApp conversation..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="pl-9"
+            className="border-0 bg-slate-50 pl-9 shadow-none"
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
           {(['all', 'attention', 'requests', 'new', 'pending', 'contacted', 'converted', 'lost'] as const).map((item) => (
             <Button
               key={item}
@@ -620,15 +711,18 @@ export default function AdminLeadsPage() {
                 return (
                   <div
                     key={lead.id}
-                    className="grid gap-4 p-4 hover:bg-slate-50 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_160px_140px]"
+                    className="flex flex-col gap-3 p-4 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="flex min-w-0 gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
                       <LeadIcon lead={lead} hasAttention={needsAttention} />
 
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-900">
-                          {getLeadDisplayName(lead)}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-semibold text-slate-900">
+                            {getLeadDisplayName(lead)}
+                          </p>
+                          {needsAttention && <AttentionDot />}
+                        </div>
 
                         <p className="mt-1 truncate text-sm text-slate-500">
                           {lead.customer_phone && lead.customer_phone !== 'Not provided'
@@ -636,54 +730,23 @@ export default function AdminLeadsPage() {
                             : 'Phone not yet provided'}
                         </p>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-medium text-slate-400">
-                            {lead.lead_code || 'No lead ID yet'}
-                          </span>
-
-                          {lead.conversation_message && (
-                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-600">
-                              WhatsApp match ready
-                            </span>
-                          )}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                          <span>{lead.lead_code || 'No lead ID'}</span>
+                          <span>•</span>
+                          <span>{lead.ambassador_name}</span>
+                          <span>•</span>
+                          <span>{formatDate(lead.created_at)}</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-700">
-                        {lead.ambassador_name}
-                      </p>
-                      <p className="truncate text-xs text-slate-500">{lead.ambassador_tag}</p>
-                      <p className="mt-1 text-xs capitalize text-slate-400">
-                        {lead.source} · {formatDate(lead.created_at)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {leadConversions.length} conversion{leadConversions.length === 1 ? '' : 's'}
-                      </p>
-                      {needsAttention ? (
-                        <p className="text-xs font-semibold text-amber-600">Review needed</p>
-                      ) : (
-                        <p className="text-xs text-slate-500">No pending issue</p>
-                      )}
-
-                      <p className="mt-1 text-xs text-slate-400">
-                        {lead.click_count || 0} click{Number(lead.click_count || 0) === 1 ? '' : 's'}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 lg:justify-end">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.color}`}>
-                        {status.label}
-                      </span>
+                    <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      <ApprovalPill lead={lead} />
 
                       <Button
                         size="sm"
                         variant={needsAttention ? 'default' : 'outline'}
-                        className="gap-2"
+                        className="gap-2 rounded-xl"
                         onClick={() => setManageLead(lead)}
                       >
                         <MoreHorizontal className="h-4 w-4" />
@@ -709,6 +772,8 @@ export default function AdminLeadsPage() {
           onClose={() => setManageLead(null)}
           onApprove={() => approveEditRequest(manageLead)}
           onReject={() => rejectEditRequest(manageLead)}
+          onApproveLead={() => approveLeadForAmbassador(manageLead)}
+          onRejectLead={() => rejectLeadForAmbassador(manageLead)}
           onEdit={() => openEditModal(manageLead)}
           onConvert={() => openConversionModal(manageLead)}
           onMarkReviewed={markConversionReviewed}
@@ -826,6 +891,8 @@ function ManageLeadModal({
   onClose,
   onApprove,
   onReject,
+  onApproveLead,
+  onRejectLead,
   onEdit,
   onConvert,
   onMarkReviewed,
@@ -841,6 +908,8 @@ function ManageLeadModal({
   onClose: () => void;
   onApprove: () => void;
   onReject: () => void;
+  onApproveLead: () => void;
+  onRejectLead: () => void;
   onEdit: () => void;
   onConvert: () => void;
   onMarkReviewed: (conversion: Conversion) => void;
@@ -849,23 +918,26 @@ function ManageLeadModal({
 }) {
   const attentionConversions = conversions.filter((conversion) => conversion.admin_attention_required);
   const conversationMessage = getConversationPreview(lead);
+  const hasAction =
+    lead.lead_approval_status === 'pending' ||
+    lead.edit_status === 'pending' ||
+    attentionConversions.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
-      <Card className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border-0 sm:max-w-4xl sm:rounded-2xl">
+      <Card className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border-0 sm:max-w-3xl sm:rounded-3xl">
         <CardContent className="space-y-5 p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-slate-900">Manage Lead</h2>
                 <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColor}`}>
                   {statusLabel}
                 </span>
-                {lead.edit_status === 'pending' && <AttentionBadge label="Update request" />}
-                {attentionConversions.length > 0 && <AttentionBadge label="Conversion review" danger />}
+                <ApprovalPill lead={lead} />
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                Match WhatsApp enquiries, edit details, convert leads, and resolve reviews.
+                {lead.lead_code || 'No lead ID'} · {lead.ambassador_name}
               </p>
             </div>
 
@@ -874,166 +946,167 @@ function ManageLeadModal({
             </button>
           </div>
 
-          {conversationMessage && (
-            <Section title="WhatsApp Conversation Match">
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-500">
-                    Use this only when matching a WhatsApp chat to this lead
-                  </p>
-
-                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-800">
-                    {conversationMessage}
+          {hasAction && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-amber-100 p-2 text-amber-700">
+                  <Bell className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-amber-950">Action needed</p>
+                  <p className="mt-1 text-sm text-amber-700">
+                    Resolve only what matters now. Full customer history is saved in the CRM timeline.
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onCopy(conversationMessage)}
-                      className="gap-2"
-                    >
-                      <Copy className="h-4 w-4" />
-                      Copy Message
-                    </Button>
+                    {lead.lead_approval_status === 'pending' && (
+                      <>
+                        <Button
+                          onClick={onApproveLead}
+                          disabled={approvalLoading}
+                          size="sm"
+                          className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                          {approvalLoading ? 'Approving...' : 'Approve Lead'}
+                        </Button>
 
-                    {lead.conversation_fingerprint && (
-                      <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-500">
-                        {lead.conversation_fingerprint}
-                      </span>
+                        <Button
+                          variant="outline"
+                          onClick={onRejectLead}
+                          disabled={approvalLoading}
+                          size="sm"
+                          className="gap-2 border-red-200 bg-white text-red-600 hover:bg-red-50"
+                        >
+                          <Ban className="h-4 w-4" />
+                          Reject Lead
+                        </Button>
+                      </>
+                    )}
+
+                    {lead.edit_status === 'pending' && (
+                      <>
+                        <Button onClick={onApprove} disabled={approvalLoading} size="sm" className="gap-2">
+                          <Check className="h-4 w-4" />
+                          Approve Update
+                        </Button>
+                        <Button variant="outline" onClick={onReject} disabled={approvalLoading} size="sm" className="gap-2">
+                          <Ban className="h-4 w-4" />
+                          Reject Update
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <CompareBox label="Greeting" value={lead.conversation_greeting || 'Not recorded'} highlight />
-                  <CompareBox label="Opening" value={lead.conversation_opening || 'Not recorded'} />
-                  <CompareBox label="Closing" value={lead.conversation_closing || 'Not recorded'} />
-                </div>
               </div>
-            </Section>
+            </div>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Customer</p>
+                  <h3 className="mt-1 text-lg font-bold text-slate-900">{getLeadDisplayName(lead)}</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {lead.customer_phone && lead.customer_phone !== 'Not provided'
+                      ? lead.customer_phone
+                      : 'Phone not yet provided'}
+                  </p>
+                </div>
+                <LeadIcon lead={lead} hasAttention={hasAction} />
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <MiniInfo label="Email" value={lead.customer_email || 'Not provided'} />
+                <MiniInfo label="Source" value={lead.source} />
+                <MiniInfo label="Created" value={formatDate(lead.created_at)} />
+                <MiniInfo label="Clicks" value={String(lead.click_count || 0)} />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Quick actions</p>
+              <div className="mt-4 grid gap-2">
+                <Button variant="outline" onClick={onEdit} className="justify-start gap-2 bg-white">
+                  <Edit className="h-4 w-4" />
+                  Edit Lead Details
+                </Button>
+                <Button onClick={onConvert} className="justify-start gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Add Conversion
+                </Button>
+              </div>
+
+              <div className="mt-4 rounded-xl bg-white p-3 text-sm text-slate-600">
+                <p className="font-semibold text-slate-900">Conversions: {conversions.length}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {attentionConversions.length > 0
+                    ? `${attentionConversions.length} conversion needs review.`
+                    : 'No conversion review pending.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {conversationMessage && (
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-blue-950">WhatsApp match</p>
+                  <p className="mt-1 text-xs text-blue-700">
+                    Conversation text found for this lead.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onCopy(conversationMessage)}
+                  className="gap-2 bg-white"
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy
+                </Button>
+              </div>
+              <p className="mt-3 max-h-28 overflow-y-auto whitespace-pre-line rounded-xl bg-white p-3 text-sm leading-6 text-slate-700">
+                {conversationMessage}
+              </p>
+            </div>
           )}
 
           {lead.edit_status === 'pending' && (
-            <Section title="Pending Ambassador Update" tone="warning">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CompareBox label="Current Name" value={lead.customer_name || 'Not provided'} />
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <p className="text-sm font-semibold text-slate-900">Requested update</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <CompareBox label="Requested Name" value={lead.pending_customer_name || 'Not provided'} highlight />
-                <CompareBox label="Current Phone" value={lead.customer_phone || 'Not provided'} />
                 <CompareBox label="Requested Phone" value={lead.pending_customer_phone || 'Not provided'} highlight />
               </div>
-
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <Button onClick={onApprove} disabled={approvalLoading} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
-                  <Check className="h-4 w-4" />
-                  {approvalLoading ? 'Approving...' : 'Approve Update'}
-                </Button>
-
-                <Button variant="outline" onClick={onReject} disabled={approvalLoading} className="gap-2 border-red-200 text-red-600 hover:bg-red-50">
-                  <Ban className="h-4 w-4" />
-                  Reject
-                </Button>
-              </div>
-            </Section>
+            </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <DetailItem icon={User} label="Customer Name" value={lead.customer_name || 'Not provided'} />
-            <DetailItem icon={Phone} label="Phone" value={lead.customer_phone || 'Not provided'} />
-            <DetailItem icon={Mail} label="Email" value={lead.customer_email || 'Not provided'} />
-            <DetailItem icon={Users} label="Ambassador" value={lead.ambassador_name} />
-            <DetailItem icon={MessageCircle} label="Source" value={lead.source} />
-            <DetailItem icon={Calendar} label="Created" value={formatDate(lead.created_at)} />
-            <DetailItem icon={Clock} label="Last Clicked" value={lead.last_clicked_at ? formatDate(lead.last_clicked_at) : 'Not recorded'} />
-            <DetailItem icon={MousePointerClick} label="Clicks" value={String(lead.click_count || 0)} />
-          </div>
-
-          <Section title="Conversion History">
-            {conversions.length === 0 ? (
-              <p className="text-sm text-slate-500">No conversions yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {conversions.map((conversion) => {
-                  const percentage =
-                    conversion.commission_percentage ??
-                    (conversion.commission_rate ? conversion.commission_rate * 100 : null);
-
-                  return (
-                    <div key={conversion.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold text-slate-900">
-                              Conversion #{conversion.conversion_sequence || 1}
-                            </p>
-                            {conversion.is_repeat_conversion && <BadgeText label="Repeat" />}
-                            {conversion.admin_attention_required && <AttentionBadge label="Needs review" danger />}
-                            {conversion.is_commissionable === false && <BadgeText label="No commission" />}
-                          </div>
-
-                          <p className="mt-1 text-xs text-slate-500">
-                            {formatDate(conversion.approved_at)}
-                          </p>
-
-                          <p className="mt-2 text-sm text-slate-600">
-                            Sale: <strong>{formatCurrency(conversion.amount)}</strong> · Commission:{' '}
-                            <strong>{formatCurrency(conversion.commission_amount || 0)}</strong>
-                            {percentage && conversion.is_commissionable !== false ? ` (${percentage}%)` : ''}
-                          </p>
-                        </div>
-
-                        {conversion.admin_attention_required && (
-                          <div className="flex flex-col gap-2 sm:w-52">
-                            <Button
-                              size="sm"
-                              onClick={() => onAddCommission(conversion)}
-                              disabled={reviewLoading === conversion.id}
-                              className="gap-2"
-                            >
-                              <Percent className="h-4 w-4" />
-                              Add Commission
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onMarkReviewed(conversion)}
-                              disabled={reviewLoading === conversion.id}
-                              className="gap-2"
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                              Approve No Commission
-                            </Button>
-                          </div>
-                        )}
-                      </div>
+          {attentionConversions.length > 0 && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+              <p className="text-sm font-semibold text-red-900">Conversion review</p>
+              <div className="mt-3 space-y-2">
+                {attentionConversions.map((conversion) => (
+                  <div key={conversion.id} className="flex flex-col gap-2 rounded-xl bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-slate-700">
+                      Sale {formatCurrency(conversion.amount)} · No commission yet
+                    </p>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => onAddCommission(conversion)} disabled={reviewLoading === conversion.id}>
+                        Add Commission
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => onMarkReviewed(conversion)} disabled={reviewLoading === conversion.id}>
+                        Approve No Commission
+                      </Button>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
-            )}
-          </Section>
-
-          {lead.notes && (
-            <Section title="Notes">
-              <p className="text-sm text-slate-600">{lead.notes}</p>
-            </Section>
+            </div>
           )}
-
-          <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={onEdit} className="gap-2">
-              <Edit className="h-4 w-4" />
-              Edit Lead
-            </Button>
-            <Button onClick={onConvert} className="gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Add Conversion
-            </Button>
-            <Button variant="ghost" onClick={onClose}>
-              Close
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>
@@ -1300,6 +1373,97 @@ function AttentionBadge({ label, danger = false }: { label: string; danger?: boo
       {danger ? <AlertCircle className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
       {label}
     </span>
+  );
+}
+
+
+function CompactLeadSummary({
+  totalLeads,
+  approvedLeads,
+  pendingApprovalLeads,
+  rejectedLeads,
+  convertedLeads,
+  attentionCount,
+  onAttentionClick,
+}: {
+  totalLeads: number;
+  approvedLeads: number;
+  pendingApprovalLeads: number;
+  rejectedLeads: number;
+  convertedLeads: number;
+  attentionCount: number;
+  onAttentionClick: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Lead overview</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Showing essential numbers only. Open each lead to manage the full details.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6 lg:w-auto">
+          <SummaryNumber label="Total" value={totalLeads} />
+          <SummaryNumber label="Approved" value={approvedLeads} positive />
+          <SummaryNumber label="Pending" value={pendingApprovalLeads} warning />
+          <SummaryNumber label="Rejected" value={rejectedLeads} muted />
+          <SummaryNumber label="Converted" value={convertedLeads} positive />
+          <button type="button" onClick={onAttentionClick} className="text-left">
+            <SummaryNumber label="Attention" value={attentionCount} warning={attentionCount > 0} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryNumber({
+  label,
+  value,
+  positive = false,
+  warning = false,
+  muted = false,
+}: {
+  label: string;
+  value: number;
+  positive?: boolean;
+  warning?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className="rounded-xl bg-slate-50 px-3 py-2">
+      <p className={`text-lg font-bold ${positive ? 'text-emerald-600' : warning ? 'text-amber-600' : muted ? 'text-slate-400' : 'text-slate-900'}`}>
+        {value}
+      </p>
+      <p className="text-[11px] font-medium text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function ApprovalPill({ lead }: { lead: Lead }) {
+  if (lead.approved_as_lead) {
+    return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">Approved</span>;
+  }
+
+  if (lead.lead_approval_status === 'rejected') {
+    return <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600">Rejected</span>;
+  }
+
+  return <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-600">Pending</span>;
+}
+
+function AttentionDot() {
+  return <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />;
+}
+
+function MiniInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-slate-400">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-slate-800">{value}</p>
+    </div>
   );
 }
 

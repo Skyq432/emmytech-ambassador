@@ -9,29 +9,43 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const VISITOR_COOKIE_NAME = 'emmytech_visitor_id';
 
-const FALLBACK_MESSAGE =
-  'Hello EmmyTech,\n\nI would like to make an enquiry about your services.\n\nKindly let me know the next step.';
-
 const FALLBACK_WHATSAPP_NUMBER = '2348146503700';
+
+const referralMessages = [
+  'Hello Emmytechnology, {name} shared this with me, I’d like to know more.',
+  'Hello Emmytechnology, I got this contact from {name}.',
+  'Hello Emmytechnology, {name} sent me your contact.',
+  'Hello Emmytechnology, I was referred by {name}.',
+  'Hello Emmytechnology, {name} gave me this number, please I need more info.',
+  'Hello Emmytechnology, my friend {name} told me about you.',
+  'Hello Emmytechnology, {name} recommended I reach out to you.',
+  'Hello Emmytechnology, I was told to contact you by {name}.',
+  'Hello Emmytechnology, {name} linked me up with you guys.',
+  'Hello Emmytechnology, I’m reaching out because {name} mentioned you.',
+];
 
 function createVisitorId() {
   return crypto.randomUUID();
 }
 
-function buildWhatsappLink(phoneOrLink: string | null, message: string) {
-  const encodedMessage = encodeURIComponent(message);
+function getRotatingMessage(ambassadorName: string) {
+  const threeMinutes = 3 * 60 * 1000;
+  const index = Math.floor(Date.now() / threeMinutes) % referralMessages.length;
 
-  if (!phoneOrLink) {
-    return `https://wa.me/${FALLBACK_WHATSAPP_NUMBER}?text=${encodedMessage}`;
-  }
+  return referralMessages[index].replace('{name}', ambassadorName);
+}
 
-  if (phoneOrLink.includes('wa.me')) {
-    const baseUrl = phoneOrLink.split('?')[0];
-    return `${baseUrl}?text=${encodedMessage}`;
-  }
+function extractWhatsappNumber(whatsappLink?: string | null) {
+  if (!whatsappLink) return FALLBACK_WHATSAPP_NUMBER;
 
-  const cleanPhone = phoneOrLink.replace(/\D/g, '');
-  return `https://wa.me/${cleanPhone || FALLBACK_WHATSAPP_NUMBER}?text=${encodedMessage}`;
+  const match = whatsappLink.match(/wa\.me\/(\d+)/);
+
+  return match?.[1] || FALLBACK_WHATSAPP_NUMBER;
+}
+
+function buildWhatsappLink(whatsappLink: string | null, message: string) {
+  const number = extractWhatsappNumber(whatsappLink);
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 }
 
 async function writeRouteLog(
@@ -51,7 +65,7 @@ async function writeRouteLog(
       },
     ]);
   } catch {
-    // Logging must never block the WhatsApp redirect.
+    // Never block redirect because of logging.
   }
 }
 
@@ -82,8 +96,12 @@ export async function GET(
   const visitorId = existingVisitorId || createVisitorId();
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    const fallbackUrl = buildWhatsappLink(null, FALLBACK_MESSAGE);
-    return redirectWithVisitorCookie(fallbackUrl, visitorId);
+    const fallbackMessage =
+      'Hello Emmytechnology, I would like to know more.';
+    return redirectWithVisitorCookie(
+      buildWhatsappLink(null, fallbackMessage),
+      visitorId
+    );
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -105,7 +123,7 @@ export async function GET(
 
     const { data: ambassadors, error: ambassadorError } = await supabase
       .from('ambassadors')
-      .select('id, referral_code, custom_referral_code, status, whatsapp_link')
+      .select('id, referral_code, custom_referral_code, status, whatsapp_link, users(name)')
       .eq('status', 'active');
 
     if (ambassadorError) {
@@ -116,8 +134,10 @@ export async function GET(
         ambassadorError.message
       );
 
-      const fallbackUrl = buildWhatsappLink(null, FALLBACK_MESSAGE);
-      return redirectWithVisitorCookie(fallbackUrl, visitorId);
+      return redirectWithVisitorCookie(
+        buildWhatsappLink(null, 'Hello Emmytechnology, I would like to know more.'),
+        visitorId
+      );
     }
 
     const ambassador = (ambassadors || []).find((item: any) => {
@@ -134,21 +154,26 @@ export async function GET(
         supabase,
         cleanCode,
         'ambassador_not_found',
-        'No active ambassador found',
-        {
-          active_ambassadors_checked: ambassadors?.length || 0,
-          visitor_id: visitorId,
-        }
+        'No active ambassador found'
       );
 
-      const fallbackUrl = buildWhatsappLink(null, FALLBACK_MESSAGE);
-      return redirectWithVisitorCookie(fallbackUrl, visitorId);
+      return redirectWithVisitorCookie(
+        buildWhatsappLink(null, 'Hello Emmytechnology, I would like to know more.'),
+        visitorId
+      );
     }
+
+const linkedUser = Array.isArray(ambassador.users)
+  ? ambassador.users[0]
+  : ambassador.users;
+
+const ambassadorName =
+  linkedUser?.name || 'an EmmyTech ambassador';
 
     const referralCodeToTrack =
       ambassador.custom_referral_code || ambassador.referral_code || cleanCode;
 
-    const { data: rpcData, error: rpcError } = await supabase.rpc(
+    const { error: rpcError } = await supabase.rpc(
       'track_whatsapp_referral_click_v2',
       {
         p_referral_code: referralCodeToTrack,
@@ -159,49 +184,30 @@ export async function GET(
     );
 
     if (rpcError) {
+      await writeRouteLog(supabase, cleanCode, 'rpc_error', rpcError.message, {
+        referral_code_to_track: referralCodeToTrack,
+        visitor_id: visitorId,
+      });
+    } else {
       await writeRouteLog(
         supabase,
         cleanCode,
-        'rpc_error',
-        rpcError.message,
+        'rpc_success',
+        'Referral click tracked successfully',
         {
-          details: rpcError,
           referral_code_to_track: referralCodeToTrack,
           visitor_id: visitorId,
         }
       );
-
-      const fallbackUrl = buildWhatsappLink(
-        ambassador.whatsapp_link,
-        FALLBACK_MESSAGE
-      );
-
-      return redirectWithVisitorCookie(fallbackUrl, visitorId);
     }
 
-    const conversationMessage =
-      rpcData?.conversation_message || FALLBACK_MESSAGE;
-
-    await writeRouteLog(
-      supabase,
-      cleanCode,
-      'rpc_success',
-      'Referral click tracked successfully',
-      {
-        referral_code_to_track: referralCodeToTrack,
-        visitor_id: visitorId,
-        lead_code: rpcData?.lead_code,
-        is_new_lead: rpcData?.is_new_lead,
-        conversation_fingerprint: rpcData?.conversation_fingerprint,
-      }
-    );
-
-    const whatsappUrl = buildWhatsappLink(
+    const finalMessage = getRotatingMessage(ambassadorName);
+    const finalWhatsappLink = buildWhatsappLink(
       ambassador.whatsapp_link,
-      conversationMessage
+      finalMessage
     );
 
-    return redirectWithVisitorCookie(whatsappUrl, visitorId);
+    return redirectWithVisitorCookie(finalWhatsappLink, visitorId);
   } catch (error: any) {
     await writeRouteLog(
       supabase,
@@ -213,7 +219,9 @@ export async function GET(
       }
     );
 
-    const fallbackUrl = buildWhatsappLink(null, FALLBACK_MESSAGE);
-    return redirectWithVisitorCookie(fallbackUrl, visitorId);
+    return redirectWithVisitorCookie(
+      buildWhatsappLink(null, 'Hello Emmytechnology, I would like to know more.'),
+      visitorId
+    );
   }
 }
