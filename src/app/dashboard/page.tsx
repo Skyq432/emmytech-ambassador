@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button';
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   Copy,
   CreditCard,
   ExternalLink,
+  Link2,
   MessageCircle,
   MousePointerClick,
   Plus,
@@ -45,9 +47,17 @@ export default function AmbassadorDashboard() {
   const [loading, setLoading] = useState(true);
   const [referralLink, setReferralLink] = useState('');
   const [spinLink, setSpinLink] = useState('');
+  const [expandedLinks, setExpandedLinks] = useState({
+    store: false,
+    spin: false,
+  });
+  const [storeStats, setStoreStats] = useState({
+    clicks: 0,
+    leads: 0,
+  });
   const [spinStats, setSpinStats] = useState({
-    uniqueVisitors: 0,
-    qualifiedLeads: 0,
+    clicks: 0,
+    leads: 0,
   });
 
   useEffect(() => {
@@ -93,28 +103,65 @@ export default function AmbassadorDashboard() {
               : 'https://spinwheel.emmytechnology.com');
           setSpinLink(`${spinOrigin}/a/${encodeURIComponent(code)}`);
 
-          const [{ count }, { data: spinRows, error: spinError }] =
-            await Promise.all([
-              supabase
-                .from('leads')
-                .select('*', { count: 'exact', head: true })
-                .eq('ambassador_id', ambData.id)
-                .is('merged_into_lead_id', null),
-              supabase
-                .from('ambassador_spin_attributions')
-                .select('visitor_id, credited_as_lead')
-                .eq('ambassador_id', ambData.id),
-            ]);
+          const [
+            { count },
+            { count: storeClickCount, error: storeClickError },
+            { data: storeLeadRows, error: storeLeadError },
+            { data: spinRows, error: spinError },
+          ] = await Promise.all([
+            supabase
+              .from('leads')
+              .select('*', { count: 'exact', head: true })
+              .eq('ambassador_id', ambData.id)
+              .is('merged_into_lead_id', null),
+            supabase
+              .from('referral_clicks')
+              .select('*', { count: 'exact', head: true })
+              .eq('ambassador_id', ambData.id),
+            supabase
+              .from('referral_clicks')
+              .select('lead_id')
+              .eq('ambassador_id', ambData.id)
+              .eq('counted_as_lead', true),
+            supabase
+              .from('ambassador_spin_attributions')
+              .select('visitor_id, open_count, credited_as_lead')
+              .eq('ambassador_id', ambData.id),
+          ]);
 
           setActualLeads(count || 0);
+
+          if (storeClickError || storeLeadError) {
+            console.error(
+              'Unable to load store referral stats:',
+              storeClickError || storeLeadError
+            );
+          } else {
+            const linkedLeadIds = new Set(
+              (storeLeadRows || [])
+                .map((row) => row.lead_id)
+                .filter((leadId): leadId is string => Boolean(leadId))
+            );
+            const unlinkedLeadRows = (storeLeadRows || []).filter(
+              (row) => !row.lead_id
+            ).length;
+
+            setStoreStats({
+              clicks: storeClickCount || 0,
+              leads: linkedLeadIds.size + unlinkedLeadRows,
+            });
+          }
 
           if (spinError) {
             console.error('Unable to load Spin Wheel attribution stats:', spinError);
           } else {
             const rows = spinRows || [];
             setSpinStats({
-              uniqueVisitors: rows.length,
-              qualifiedLeads: rows.filter((row) => row.credited_as_lead).length,
+              clicks: rows.reduce(
+                (total, row) => total + Number(row.open_count || 0),
+                0
+              ),
+              leads: rows.filter((row) => row.credited_as_lead).length,
             });
           }
         }
@@ -142,6 +189,13 @@ export default function AmbassadorDashboard() {
   function shareOnWhatsApp(link: string, message: string) {
     const text = encodeURIComponent(`${message}: ${link}`);
     window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
+  }
+
+  function toggleLinkPanel(panel: 'store' | 'spin') {
+    setExpandedLinks((current) => ({
+      ...current,
+      [panel]: !current[panel],
+    }));
   }
 
   if (loading) {
@@ -264,96 +318,187 @@ export default function AmbassadorDashboard() {
               </div>
 
               <h3 className="mt-3 max-w-xl text-2xl font-bold tracking-[-0.03em] sm:text-[28px]">
-                Share the right experience for every audience.
+                Your links, clicks and leads in one place.
               </h3>
               <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/[0.80]">
-                Your store link supports product referrals. Your Spin Wheel link turns completed registrations into attributed leads automatically.
+                Open either card to copy the link, share it and check its click and lead counts.
               </p>
 
               <div className="mt-6 grid gap-3">
-                <div className="rounded-2xl border border-white/[0.12] bg-white/10 p-4 backdrop-blur-sm sm:flex sm:items-center sm:gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-100/70">
-                      Store referral link
-                    </p>
-                    <p className="mt-1 truncate text-sm font-medium text-white">{referralLink}</p>
-                  </div>
+                <div className="overflow-hidden rounded-2xl border border-white/[0.12] bg-white/10 backdrop-blur-sm">
+                  <button
+                    type="button"
+                    onClick={() => toggleLinkPanel('store')}
+                    className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-white/[0.06]"
+                    aria-expanded={expandedLinks.store}
+                    aria-controls="store-referral-panel"
+                  >
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 text-blue-100">
+                      <Link2 className="h-5 w-5" />
+                    </div>
 
-                  <div className="mt-3 flex gap-2 sm:mt-0">
-                    <button
-                      onClick={() => copyToClipboard(referralLink, 'store-link')}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emmy-primary transition hover:bg-blue-50"
-                    >
-                      {copied === 'store-link' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      {copied === 'store-link' ? 'Copied' : 'Copy'}
-                    </button>
-                    <button
-                      onClick={() =>
-                        shareOnWhatsApp(
-                          referralLink,
-                          'Shop with EmmyTech through my personal referral link'
-                        )
-                      }
-                      className="grid h-10 w-10 place-items-center rounded-xl border border-white/20 bg-white/10 text-white transition hover:bg-white/[0.15]"
-                      aria-label="Share store referral link"
-                      title="Share store referral link"
-                    >
-                      <Share2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-amber-300/30 bg-amber-300/[0.12] p-4 backdrop-blur-sm">
-                  <div className="sm:flex sm:items-center sm:gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <MousePointerClick className="h-4 w-4 text-amber-300" />
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-amber-100">
-                          Personal Spin Wheel link
-                        </p>
-                      </div>
-                      <p className="mt-1 truncate text-sm font-medium text-white">{spinLink}</p>
-                      <p className="mt-1 text-xs text-blue-100/70">
-                        A lead is credited after the visitor completes registration.
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-100/70">
+                        Store referral link
+                      </p>
+                      <p className="mt-1 text-xs text-blue-100/65">
+                        {storeStats.clicks.toLocaleString()} clicks · {storeStats.leads.toLocaleString()} leads
                       </p>
                     </div>
 
-                    <div className="mt-3 flex gap-2 sm:mt-0">
-                      <button
-                        onClick={() => copyToClipboard(spinLink, 'spin-link')}
-                        disabled={!spinLink}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {copied === 'spin-link' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                        {copied === 'spin-link' ? 'Copied' : 'Copy'}
-                      </button>
-                      <button
-                        onClick={() =>
-                          shareOnWhatsApp(
-                            spinLink,
-                            'Use my EmmyTech Spin Wheel link to register and claim your free spin'
-                          )
-                        }
-                        disabled={!spinLink}
-                        className="grid h-10 w-10 place-items-center rounded-xl border border-amber-200/30 bg-white/10 text-white transition hover:bg-white/[0.15] disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Share personal Spin Wheel link"
-                        title="Share personal Spin Wheel link"
-                      >
-                        <Share2 className="h-4 w-4" />
-                      </button>
+                    <div className="hidden items-center gap-2 sm:flex">
+                      <span className="rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white">
+                        {storeStats.clicks.toLocaleString()} clicks
+                      </span>
+                      <span className="rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white">
+                        {storeStats.leads.toLocaleString()} leads
+                      </span>
                     </div>
-                  </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/10 pt-4">
-                    <div>
-                      <p className="text-xl font-bold text-white">{spinStats.uniqueVisitors}</p>
-                      <p className="mt-0.5 text-[11px] text-blue-100/65">Unique spin visitors</p>
+                    <ChevronDown
+                      className={`h-5 w-5 shrink-0 text-blue-100 transition-transform ${
+                        expandedLinks.store ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {expandedLinks.store && (
+                    <div
+                      id="store-referral-panel"
+                      className="border-t border-white/10 px-4 pb-4 pt-3"
+                    >
+                      <p className="break-all text-sm font-medium text-white">
+                        {referralLink}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-blue-100/65">
+                        Share this link when referring people to the EmmyTech store.
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(referralLink, 'store-link')}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emmy-primary transition hover:bg-blue-50"
+                        >
+                          {copied === 'store-link' ? (
+                            <Check className="h-4 w-4" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                          {copied === 'store-link' ? 'Copied' : 'Copy link'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            shareOnWhatsApp(
+                              referralLink,
+                              'Shop with EmmyTech through my personal referral link'
+                            )
+                          }
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/[0.15]"
+                        >
+                          <Share2 className="h-4 w-4" />
+                          Share
+                        </button>
+                        <Link
+                          href="/dashboard/leads"
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/[0.15]"
+                        >
+                          <Users className="h-4 w-4" />
+                          View leads
+                        </Link>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xl font-bold text-white">{spinStats.qualifiedLeads}</p>
-                      <p className="mt-0.5 text-[11px] text-blue-100/65">Credited spin leads</p>
+                  )}
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-white/[0.12] bg-white/10 backdrop-blur-sm">
+                  <button
+                    type="button"
+                    onClick={() => toggleLinkPanel('spin')}
+                    className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-white/[0.06]"
+                    aria-expanded={expandedLinks.spin}
+                    aria-controls="spin-wheel-panel"
+                  >
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 text-blue-100">
+                      <MousePointerClick className="h-5 w-5" />
                     </div>
-                  </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-100/70">
+                        Personal Spin Wheel link
+                      </p>
+                      <p className="mt-1 text-xs text-blue-100/65">
+                        {spinStats.clicks.toLocaleString()} clicks · {spinStats.leads.toLocaleString()} leads
+                      </p>
+                    </div>
+
+                    <div className="hidden items-center gap-2 sm:flex">
+                      <span className="rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white">
+                        {spinStats.clicks.toLocaleString()} clicks
+                      </span>
+                      <span className="rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white">
+                        {spinStats.leads.toLocaleString()} leads
+                      </span>
+                    </div>
+
+                    <ChevronDown
+                      className={`h-5 w-5 shrink-0 text-blue-100 transition-transform ${
+                        expandedLinks.spin ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {expandedLinks.spin && (
+                    <div
+                      id="spin-wheel-panel"
+                      className="border-t border-white/10 px-4 pb-4 pt-3"
+                    >
+                      <p className="break-all text-sm font-medium text-white">
+                        {spinLink}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-blue-100/65">
+                        A lead is added after the visitor completes Spin Wheel registration.
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(spinLink, 'spin-link')}
+                          disabled={!spinLink}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emmy-primary transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {copied === 'spin-link' ? (
+                            <Check className="h-4 w-4" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                          {copied === 'spin-link' ? 'Copied' : 'Copy link'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            shareOnWhatsApp(
+                              spinLink,
+                              'Use my EmmyTech Spin Wheel link to register and claim your free spin'
+                            )
+                          }
+                          disabled={!spinLink}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/[0.15] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Share2 className="h-4 w-4" />
+                          Share
+                        </button>
+                        <Link
+                          href="/dashboard/leads"
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/[0.15]"
+                        >
+                          <Users className="h-4 w-4" />
+                          View leads
+                        </Link>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
