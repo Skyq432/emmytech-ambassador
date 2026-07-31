@@ -12,6 +12,7 @@ import {
   CreditCard,
   ExternalLink,
   MessageCircle,
+  MousePointerClick,
   Plus,
   Share2,
   Sparkles,
@@ -43,6 +44,11 @@ export default function AmbassadorDashboard() {
   const [actualLeads, setActualLeads] = useState(0);
   const [loading, setLoading] = useState(true);
   const [referralLink, setReferralLink] = useState('');
+  const [spinLink, setSpinLink] = useState('');
+  const [spinStats, setSpinStats] = useState({
+    uniqueVisitors: 0,
+    qualifiedLeads: 0,
+  });
 
   useEffect(() => {
     async function fetchData() {
@@ -73,13 +79,44 @@ export default function AmbassadorDashboard() {
           setAmbassador(formattedAmbassador);
           setReferralLink(`https://ambassador.emmytechnology.com/r/${code}`);
 
-          const { count } = await supabase
-            .from('leads')
-            .select('*', { count: 'exact', head: true })
-            .eq('ambassador_id', ambData.id)
-            .is('merged_into_lead_id', null);
+          const configuredSpinOrigin = process.env.NEXT_PUBLIC_SPIN_WHEEL_URL?.replace(
+            /\/$/,
+            ''
+          );
+          const isLocalBrowser = ['localhost', '127.0.0.1'].includes(
+            window.location.hostname
+          );
+          const spinOrigin =
+            configuredSpinOrigin ||
+            (isLocalBrowser
+              ? 'http://127.0.0.1:3000'
+              : 'https://spinwheel.emmytechnology.com');
+          setSpinLink(`${spinOrigin}/a/${encodeURIComponent(code)}`);
+
+          const [{ count }, { data: spinRows, error: spinError }] =
+            await Promise.all([
+              supabase
+                .from('leads')
+                .select('*', { count: 'exact', head: true })
+                .eq('ambassador_id', ambData.id)
+                .is('merged_into_lead_id', null),
+              supabase
+                .from('ambassador_spin_attributions')
+                .select('visitor_id, credited_as_lead')
+                .eq('ambassador_id', ambData.id),
+            ]);
 
           setActualLeads(count || 0);
+
+          if (spinError) {
+            console.error('Unable to load Spin Wheel attribution stats:', spinError);
+          } else {
+            const rows = spinRows || [];
+            setSpinStats({
+              uniqueVisitors: rows.length,
+              qualifiedLeads: rows.filter((row) => row.credited_as_lead).length,
+            });
+          }
         }
       } catch (error) {
         console.error('Error fetching ambassador dashboard:', error);
@@ -102,10 +139,8 @@ export default function AmbassadorDashboard() {
     window.setTimeout(() => setCopied(null), 1800);
   }
 
-  function shareOnWhatsApp() {
-    const text = encodeURIComponent(
-      `Shop with EmmyTech through my referral link: ${referralLink}`
-    );
+  function shareOnWhatsApp(link: string, message: string) {
+    const text = encodeURIComponent(`${message}: ${link}`);
     window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   }
 
@@ -168,7 +203,7 @@ export default function AmbassadorDashboard() {
     {
       label: 'Submit activity',
       description: 'Add a social post for review',
-      href: '/dashboard/activity/new',
+      href: '/dashboard/activity',
       icon: Plus,
     },
     {
@@ -224,43 +259,107 @@ export default function AmbassadorDashboard() {
               <div className="flex items-center gap-2 text-blue-100">
                 <Sparkles className="h-4 w-4" />
                 <span className="text-xs font-semibold uppercase tracking-[0.14em]">
-                  Your growth link
+                  Your referral links
                 </span>
               </div>
 
               <h3 className="mt-3 max-w-xl text-2xl font-bold tracking-[-0.03em] sm:text-[28px]">
-                Share once. Track every lead.
+                Share the right experience for every audience.
               </h3>
               <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/[0.80]">
-                Use your personalised link whenever you recommend EmmyTech products or services.
+                Your store link supports product referrals. Your Spin Wheel link turns completed registrations into attributed leads automatically.
               </p>
 
-              <div className="mt-6 rounded-2xl border border-white/[0.12] bg-white/10 p-3 backdrop-blur-sm sm:flex sm:items-center sm:gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-white">{referralLink}</p>
-                  <p className="mt-1 text-xs text-blue-100/[0.65]">
-                    Code: {ambassador.custom_referral_code || ambassador.referral_code}
-                  </p>
+              <div className="mt-6 grid gap-3">
+                <div className="rounded-2xl border border-white/[0.12] bg-white/10 p-4 backdrop-blur-sm sm:flex sm:items-center sm:gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-100/70">
+                      Store referral link
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium text-white">{referralLink}</p>
+                  </div>
+
+                  <div className="mt-3 flex gap-2 sm:mt-0">
+                    <button
+                      onClick={() => copyToClipboard(referralLink, 'store-link')}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emmy-primary transition hover:bg-blue-50"
+                    >
+                      {copied === 'store-link' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {copied === 'store-link' ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={() =>
+                        shareOnWhatsApp(
+                          referralLink,
+                          'Shop with EmmyTech through my personal referral link'
+                        )
+                      }
+                      className="grid h-10 w-10 place-items-center rounded-xl border border-white/20 bg-white/10 text-white transition hover:bg-white/[0.15]"
+                      aria-label="Share store referral link"
+                      title="Share store referral link"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="mt-3 flex gap-2 sm:mt-0">
-                  <button
-                    onClick={() => copyToClipboard(referralLink, 'link')}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emmy-primary transition hover:bg-blue-50"
-                  >
-                    {copied === 'link' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    {copied === 'link' ? 'Copied' : 'Copy'}
-                  </button>
-                  <button
-                    onClick={shareOnWhatsApp}
-                    className="grid h-10 w-10 place-items-center rounded-xl border border-white/20 bg-white/10 text-white transition hover:bg-white/[0.15]"
-                    aria-label="Share referral link"
-                    title="Share referral link"
-                  >
-                    <Share2 className="h-4 w-4" />
-                  </button>
+                <div className="rounded-2xl border border-amber-300/30 bg-amber-300/[0.12] p-4 backdrop-blur-sm">
+                  <div className="sm:flex sm:items-center sm:gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <MousePointerClick className="h-4 w-4 text-amber-300" />
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-amber-100">
+                          Personal Spin Wheel link
+                        </p>
+                      </div>
+                      <p className="mt-1 truncate text-sm font-medium text-white">{spinLink}</p>
+                      <p className="mt-1 text-xs text-blue-100/70">
+                        A lead is credited after the visitor completes registration.
+                      </p>
+                    </div>
+
+                    <div className="mt-3 flex gap-2 sm:mt-0">
+                      <button
+                        onClick={() => copyToClipboard(spinLink, 'spin-link')}
+                        disabled={!spinLink}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {copied === 'spin-link' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        {copied === 'spin-link' ? 'Copied' : 'Copy'}
+                      </button>
+                      <button
+                        onClick={() =>
+                          shareOnWhatsApp(
+                            spinLink,
+                            'Use my EmmyTech Spin Wheel link to register and claim your free spin'
+                          )
+                        }
+                        disabled={!spinLink}
+                        className="grid h-10 w-10 place-items-center rounded-xl border border-amber-200/30 bg-white/10 text-white transition hover:bg-white/[0.15] disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Share personal Spin Wheel link"
+                        title="Share personal Spin Wheel link"
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/10 pt-4">
+                    <div>
+                      <p className="text-xl font-bold text-white">{spinStats.uniqueVisitors}</p>
+                      <p className="mt-0.5 text-[11px] text-blue-100/65">Unique spin visitors</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-bold text-white">{spinStats.qualifiedLeads}</p>
+                      <p className="mt-0.5 text-[11px] text-blue-100/65">Credited spin leads</p>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              <p className="mt-4 text-xs text-blue-100/60">
+                Ambassador code: {ambassador.custom_referral_code || ambassador.referral_code}
+              </p>
             </div>
           </CardContent>
         </Card>

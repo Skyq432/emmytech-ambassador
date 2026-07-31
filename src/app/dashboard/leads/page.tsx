@@ -20,13 +20,16 @@ interface Lead {
   ambassador_id: string;
   customer_name: string | null;
   customer_phone: string | null;
-  status: 'pending' | 'contacted' | 'converted' | 'lost';
+  status: 'new' | 'pending' | 'contacted' | 'converted' | 'lost';
   edit_status: 'none' | 'pending' | 'approved' | 'rejected' | null;
   pending_customer_name: string | null;
   pending_customer_phone: string | null;
   created_at: string;
   updated_at: string | null;
   merged_into_lead_id?: string | null;
+  source: string | null;
+  lead_type: string | null;
+  source_detail: Record<string, unknown> | null;
 }
 
 type BadgeVariant =
@@ -101,7 +104,10 @@ export default function LeadsPage() {
           pending_customer_phone,
           created_at,
           updated_at,
-          merged_into_lead_id
+          merged_into_lead_id,
+          source,
+          lead_type,
+          source_detail
         `
         )
         .eq('ambassador_id', ambassador.id)
@@ -116,7 +122,7 @@ export default function LeadsPage() {
 
       setStats({
         total: leadRows.length,
-        pending: leadRows.filter((lead) => lead.status === 'pending').length,
+        pending: leadRows.filter((lead) => ['new', 'pending'].includes(lead.status)).length,
         contacted: leadRows.filter((lead) => lead.status === 'contacted').length,
         converted: leadRows.filter((lead) => lead.status === 'converted').length,
       });
@@ -178,13 +184,18 @@ export default function LeadsPage() {
 
   function getStatusBadge(status: Lead['status']) {
     const variants: Record<Lead['status'], BadgeVariant> = {
+      new: 'warning',
       pending: 'warning',
       contacted: 'info',
       converted: 'success',
       lost: 'danger',
     };
 
-    return <Badge variant={variants[status]}>{status}</Badge>;
+    return (
+      <Badge variant={variants[status]}>
+        {status === 'new' ? 'new lead' : status}
+      </Badge>
+    );
   }
 
   function getEditBadge(status: Lead['edit_status']) {
@@ -255,7 +266,7 @@ export default function LeadsPage() {
             <CardContent className="p-8 text-center">
               <p className="text-muted-foreground">No leads yet</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Share your referral link to start receiving leads.
+                Share your store or Spin Wheel referral link to start receiving leads.
               </p>
             </CardContent>
           </Card>
@@ -275,6 +286,10 @@ export default function LeadsPage() {
                           {lead.customer_name || 'Anonymous Lead'}
                         </p>
                         {getStatusBadge(lead.status)}
+                        {(lead.lead_type === 'spin_wheel_registration' ||
+                          lead.source_detail?.channel === 'spin_wheel') && (
+                          <Badge variant="info">Spin Wheel</Badge>
+                        )}
                         {getEditBadge(lead.edit_status)}
                       </div>
 
