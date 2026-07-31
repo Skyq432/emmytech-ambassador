@@ -10,45 +10,100 @@
 }
 
 @layer base {
-  html {
-    font-family: 'Inter', system-ui, sans-serif;
+  * {
+    box-sizing: border-box;
   }
+
+  html {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background: #f6f8fc;
+  }
+
   body {
-    background-color: #f8fafc;
-    color: #1e293b;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background: #f6f8fc;
+    color: #172033;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: rgba(0, 51, 153, 0.16);
   }
 }
 
 @layer components {
   .emmy-card {
-    background-color: white;
-    border-radius: 0.75rem;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    border: 1px solid #e5eaf2;
+    border-radius: 1rem;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
   }
-  .emmy-card:hover {
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
-  }
+
   .emmy-gradient-bg {
-    background: linear-gradient(135deg, #003399 0%, #1a4db3 50%, #ef7305 100%);
+    background: linear-gradient(135deg, #003399 0%, #1a4db3 55%, #ef7305 100%);
   }
+
   .sidebar-link {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     padding: 0.625rem 1rem;
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
     color: #64748b;
     font-size: 0.875rem;
     font-weight: 500;
     transition: all 0.15s;
   }
+
   .sidebar-link:hover {
     background-color: #f1f5f9;
     color: #003399;
   }
+
   .sidebar-link.active {
     background-color: #003399;
     color: white;
+  }
+}
+
+.ambassador-shell-main {
+  margin-left: 0;
+  transition: margin-left 200ms ease;
+}
+
+.ambassador-nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.ambassador-nav-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.ambassador-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ambassador-nav-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@media (min-width: 1024px) {
+  .ambassador-shell-main {
+    margin-left: 276px;
+  }
+
+  html[data-ambassador-sidebar='collapsed'] .ambassador-shell-main {
+    margin-left: 92px;
   }
 }

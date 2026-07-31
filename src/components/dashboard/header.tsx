@@ -1,80 +1,68 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase';
+import { useMemo } from 'react';
+import { usePathname } from 'next/navigation';
 import { NotificationCenter } from '@/components/notification-center';
-import { Search, User } from 'lucide-react';
+import { User } from 'lucide-react';
 
 interface DashboardHeaderProps {
   user?: any;
   profile?: any;
 }
 
+const pageMeta: Record<string, { title: string; eyebrow: string }> = {
+  '/dashboard': { title: 'Dashboard', eyebrow: 'Ambassador workspace' },
+  '/dashboard/leads': { title: 'My Leads', eyebrow: 'Referral pipeline' },
+  '/dashboard/activity': { title: 'Activity', eyebrow: 'Social submissions' },
+  '/dashboard/activity/new': { title: 'Submit Activity', eyebrow: 'Social submissions' },
+  '/dashboard/leaderboard': { title: 'Leaderboard', eyebrow: 'Performance ranking' },
+  '/dashboard/payouts': { title: 'Payouts', eyebrow: 'Earnings history' },
+  '/dashboard/payout-account': { title: 'Payout Account', eyebrow: 'Payment details' },
+  '/dashboard/settings': { title: 'Settings', eyebrow: 'Account preferences' },
+  '/admin': { title: 'Command Centre', eyebrow: 'Admin workspace' },
+  '/admin/ambassadors': { title: 'Ambassadors', eyebrow: 'People and performance' },
+  '/admin/activities': { title: 'Activity Reviews', eyebrow: 'Approvals queue' },
+  '/admin/leads': { title: 'Lead Management', eyebrow: 'Pipeline operations' },
+  '/admin/conversions': { title: 'Conversions', eyebrow: 'Sales and commission' },
+  '/admin/products': { title: 'Products', eyebrow: 'Catalogue management' },
+  '/admin/invite': { title: 'Invitations', eyebrow: 'Ambassador onboarding' },
+  '/admin/settings': { title: 'Platform Settings', eyebrow: 'System controls' },
+};
+
 export function DashboardHeader({ user, profile }: DashboardHeaderProps) {
-  const [currentUser, setCurrentUser] = useState<any>(profile || user);
+  const pathname = usePathname();
+  const currentUser = profile || user;
 
-  useEffect(() => {
-    if (!currentUser) {
-      async function fetchUser() {
-        const supabase = createClient();
-
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (user) {
-          const { data } = await supabase
-            .from('users')
-            .select('name, email, avatar_url, role')
-            .eq('id', user.id)
-            .single();
-
-          setCurrentUser(data || user);
-        }
-      }
-
-      fetchUser();
+  const meta = useMemo(() => {
+    if (pageMeta[pathname]) return pageMeta[pathname];
+    if (pathname.startsWith('/admin/ambassadors/')) {
+      return { title: 'Ambassador Profile', eyebrow: 'People and performance' };
     }
-  }, [currentUser]);
+    return currentUser?.role === 'admin'
+      ? { title: 'Admin Workspace', eyebrow: 'EmmyTech operations' }
+      : { title: 'Ambassador Workspace', eyebrow: 'EmmyTech growth programme' };
+  }, [pathname, currentUser?.role]);
+
+  const displayName =
+    currentUser?.name || currentUser?.user_metadata?.name || currentUser?.email || 'User';
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-white/85 backdrop-blur-xl">
-      <div className="flex h-16 items-center justify-between px-4 pl-16 sm:px-5 sm:pl-16 lg:px-6 lg:pl-6">
-        <div className="flex min-w-0 flex-1 items-center">
-          <div className="relative hidden w-full max-w-xs md:block">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-
-            <input
-              type="text"
-              placeholder="Search..."
-              className="w-full rounded-lg border-0 bg-slate-100 py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-emmy-primary/20"
-            />
-          </div>
-
-          <div className="min-w-0 md:hidden">
-            <p className="truncate text-sm font-semibold text-slate-900">
-              {currentUser?.role === 'admin' ? 'Admin Panel' : 'Dashboard'}
-            </p>
-            <p className="truncate text-xs text-slate-500">
-              {currentUser?.name || currentUser?.email || 'Welcome'}
-            </p>
-          </div>
+    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-[#f6f8fc]/[0.88] backdrop-blur-xl">
+      <div className="mx-auto flex h-[76px] max-w-[1500px] items-center justify-between gap-4 px-4 pl-16 sm:px-6 sm:pl-16 lg:px-8 lg:pl-8">
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+            {meta.eyebrow}
+          </p>
+          <h1 className="mt-1 truncate text-xl font-bold tracking-[-0.025em] text-slate-950 sm:text-[22px]">
+            {meta.title}
+          </h1>
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <NotificationCenter />
 
-          <div className="flex items-center gap-3 border-l pl-3">
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-medium">
-                {currentUser?.name || 'User'}
-              </p>
-              <p className="text-xs capitalize text-muted-foreground">
-                {currentUser?.role || 'Ambassador'}
-              </p>
-            </div>
-
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-emmy-primary text-sm font-bold text-white">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-1.5 pr-2.5 shadow-sm">
+            <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-emmy-primary text-sm font-bold text-white">
               {currentUser?.avatar_url ? (
                 <img
                   src={currentUser.avatar_url}
@@ -84,6 +72,13 @@ export function DashboardHeader({ user, profile }: DashboardHeaderProps) {
               ) : (
                 <User className="h-4 w-4" />
               )}
+            </div>
+
+            <div className="hidden max-w-40 text-left sm:block">
+              <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
+              <p className="truncate text-[11px] capitalize text-slate-500">
+                {currentUser?.role || 'ambassador'}
+              </p>
             </div>
           </div>
         </div>

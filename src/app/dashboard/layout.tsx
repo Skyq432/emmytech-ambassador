@@ -14,9 +14,7 @@ export default async function DashboardLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect('/auth/login');
-  }
+  if (!user) redirect('/auth/login');
 
   const { data: profile } = await supabase
     .from('users')
@@ -33,28 +31,21 @@ export default async function DashboardLayout({
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (!ambassador) {
-      redirect('/auth/login');
-    }
-
-    if (ambassador.status === 'suspended') {
-      redirect('/account-suspended');
-    }
-
-    if (ambassador.status === 'deleted') {
-      redirect('/auth/login');
-    }
+    if (!ambassador) redirect('/auth/login');
+    if (ambassador.status === 'suspended') redirect('/account-suspended');
+    if (ambassador.status === 'deleted') redirect('/auth/login');
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <DashboardSidebar role={role} user={user} />
+    <div className="min-h-screen bg-[#f6f8fc]">
+      <DashboardSidebar role={role} user={profile || user} />
 
-      <div className="flex min-h-screen flex-col lg:ml-64">
+      <div className="ambassador-shell-main flex min-h-screen flex-col">
         <DashboardHeader user={user} profile={profile} />
-
-        <main className="flex-1 overflow-auto p-4 sm:p-5 lg:p-6">
-          {children}
+        <main className="flex-1">
+          <div className="mx-auto w-full max-w-[1500px] p-4 sm:p-6 lg:p-8">
+            {children}
+          </div>
         </main>
       </div>
     </div>
