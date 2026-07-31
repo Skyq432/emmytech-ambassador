@@ -299,20 +299,43 @@ export default function AdminActivitiesPage() {
     return labels[type];
   }
 
+  async function getReviewingAdminId() {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError) throw authError;
+    if (!user) throw new Error('Your admin session has expired. Please sign in again.');
+
+    return user.id;
+  }
+
   async function approvePost(activityId: string) {
     const rawId = activityId.replace('post-', '');
     setApprovingPost(activityId);
 
     try {
-      const { error } = await supabase
+      const reviewerId = await getReviewingAdminId();
+      const reviewedAt = new Date().toISOString();
+
+      const { data, error } = await supabase
         .from('activities')
         .update({
           status: 'approved',
-          approved_at: new Date().toISOString(),
+          reviewed_at: reviewedAt,
+          reviewed_by: reviewerId,
+          rejection_reason: null,
         })
-        .eq('id', rawId);
+        .eq('id', rawId)
+        .eq('status', 'pending_review')
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) {
+        throw new Error('This activity has already been reviewed or no longer exists.');
+      }
 
       await fetchActivities();
     } catch (err: any) {
@@ -324,20 +347,34 @@ export default function AdminActivitiesPage() {
 
   async function rejectPost(activityId: string) {
     const rawId = activityId.replace('post-', '');
-    const reason = window.prompt('Reason for rejection?') || 'Rejected by admin.';
+    const reason = window.prompt('Reason for rejection?');
 
+    if (reason === null) return;
+
+    const rejectionReason = reason.trim() || 'Rejected by admin.';
     setRejectingPost(activityId);
 
     try {
-      const { error } = await supabase
+      const reviewerId = await getReviewingAdminId();
+      const reviewedAt = new Date().toISOString();
+
+      const { data, error } = await supabase
         .from('activities')
         .update({
           status: 'rejected',
-          rejection_reason: reason,
+          reviewed_at: reviewedAt,
+          reviewed_by: reviewerId,
+          rejection_reason: rejectionReason,
         })
-        .eq('id', rawId);
+        .eq('id', rawId)
+        .eq('status', 'pending_review')
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) {
+        throw new Error('This activity has already been reviewed or no longer exists.');
+      }
 
       await fetchActivities();
     } catch (err: any) {
