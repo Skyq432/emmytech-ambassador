@@ -48,10 +48,10 @@ export default function AmbassadorDashboard() {
   const [referralLink, setReferralLink] = useState('');
   const [spinLink, setSpinLink] = useState('');
   const [expandedLinks, setExpandedLinks] = useState({
-    store: false,
+    whatsapp: false,
     spin: false,
   });
-  const [storeStats, setStoreStats] = useState({
+  const [whatsappStats, setWhatsappStats] = useState({
     clicks: 0,
     leads: 0,
   });
@@ -105,23 +105,26 @@ export default function AmbassadorDashboard() {
 
           const [
             { count },
-            { count: storeClickCount, error: storeClickError },
-            { data: storeLeadRows, error: storeLeadError },
+            { count: whatsappClickCount, error: whatsappClickError },
+            { data: whatsappLeadRows, error: whatsappLeadError },
             { data: spinRows, error: spinError },
           ] = await Promise.all([
             supabase
               .from('leads')
               .select('*', { count: 'exact', head: true })
               .eq('ambassador_id', ambData.id)
+              .eq('approved_as_lead', true)
               .is('merged_into_lead_id', null),
             supabase
               .from('referral_clicks')
               .select('*', { count: 'exact', head: true })
-              .eq('ambassador_id', ambData.id),
+              .eq('ambassador_id', ambData.id)
+              .eq('source', 'whatsapp'),
             supabase
               .from('referral_clicks')
               .select('lead_id')
               .eq('ambassador_id', ambData.id)
+              .eq('source', 'whatsapp')
               .eq('counted_as_lead', true),
             supabase
               .from('ambassador_spin_attributions')
@@ -131,23 +134,23 @@ export default function AmbassadorDashboard() {
 
           setActualLeads(count || 0);
 
-          if (storeClickError || storeLeadError) {
+          if (whatsappClickError || whatsappLeadError) {
             console.error(
-              'Unable to load store referral stats:',
-              storeClickError || storeLeadError
+              'Unable to load WhatsApp referral stats:',
+              whatsappClickError || whatsappLeadError
             );
           } else {
             const linkedLeadIds = new Set(
-              (storeLeadRows || [])
+              (whatsappLeadRows || [])
                 .map((row) => row.lead_id)
                 .filter((leadId): leadId is string => Boolean(leadId))
             );
-            const unlinkedLeadRows = (storeLeadRows || []).filter(
+            const unlinkedLeadRows = (whatsappLeadRows || []).filter(
               (row) => !row.lead_id
             ).length;
 
-            setStoreStats({
-              clicks: storeClickCount || 0,
+            setWhatsappStats({
+              clicks: whatsappClickCount || 0,
               leads: linkedLeadIds.size + unlinkedLeadRows,
             });
           }
@@ -191,7 +194,7 @@ export default function AmbassadorDashboard() {
     window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   }
 
-  function toggleLinkPanel(panel: 'store' | 'spin') {
+  function toggleLinkPanel(panel: 'whatsapp' | 'spin') {
     setExpandedLinks((current) => ({
       ...current,
       [panel]: !current[panel],
@@ -318,20 +321,20 @@ export default function AmbassadorDashboard() {
               </div>
 
               <h3 className="mt-3 max-w-xl text-2xl font-bold tracking-[-0.03em] sm:text-[28px]">
-                Your links, clicks and leads in one place.
+                Your referral links, clicks and leads in one place.
               </h3>
               <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/[0.80]">
-                Open either card to copy the link, share it and check its click and lead counts.
+                Open either card to copy the link, share it and check its separate click and lead counts. One person is counted as one lead even when they use both links.
               </p>
 
               <div className="mt-6 grid gap-3">
                 <div className="overflow-hidden rounded-2xl border border-white/[0.12] bg-white/10 backdrop-blur-sm">
                   <button
                     type="button"
-                    onClick={() => toggleLinkPanel('store')}
+                    onClick={() => toggleLinkPanel('whatsapp')}
                     className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-white/[0.06]"
-                    aria-expanded={expandedLinks.store}
-                    aria-controls="store-referral-panel"
+                    aria-expanded={expandedLinks.whatsapp}
+                    aria-controls="whatsapp-referral-panel"
                   >
                     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 text-blue-100">
                       <Link2 className="h-5 w-5" />
@@ -339,60 +342,60 @@ export default function AmbassadorDashboard() {
 
                     <div className="min-w-0 flex-1">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-100/70">
-                        Store referral link
+                        WhatsApp referral link
                       </p>
                       <p className="mt-1 text-xs text-blue-100/65">
-                        {storeStats.clicks.toLocaleString()} clicks · {storeStats.leads.toLocaleString()} leads
+                        {whatsappStats.clicks.toLocaleString()} clicks · {whatsappStats.leads.toLocaleString()} leads
                       </p>
                     </div>
 
                     <div className="hidden items-center gap-2 sm:flex">
                       <span className="rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white">
-                        {storeStats.clicks.toLocaleString()} clicks
+                        {whatsappStats.clicks.toLocaleString()} clicks
                       </span>
                       <span className="rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white">
-                        {storeStats.leads.toLocaleString()} leads
+                        {whatsappStats.leads.toLocaleString()} leads
                       </span>
                     </div>
 
                     <ChevronDown
                       className={`h-5 w-5 shrink-0 text-blue-100 transition-transform ${
-                        expandedLinks.store ? 'rotate-180' : ''
+                        expandedLinks.whatsapp ? 'rotate-180' : ''
                       }`}
                     />
                   </button>
 
-                  {expandedLinks.store && (
+                  {expandedLinks.whatsapp && (
                     <div
-                      id="store-referral-panel"
+                      id="whatsapp-referral-panel"
                       className="border-t border-white/10 px-4 pb-4 pt-3"
                     >
                       <p className="break-all text-sm font-medium text-white">
                         {referralLink}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-blue-100/65">
-                        Share this link when referring people to the EmmyTech store.
+                        Share this link to open an attributed WhatsApp conversation with EmmyTech.
                       </p>
 
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(referralLink, 'store-link')}
+                          onClick={() => copyToClipboard(referralLink, 'whatsapp-link')}
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emmy-primary transition hover:bg-blue-50"
                         >
-                          {copied === 'store-link' ? (
+                          {copied === 'whatsapp-link' ? (
                             <Check className="h-4 w-4" />
                           ) : (
                             <Copy className="h-4 w-4" />
                           )}
-                          {copied === 'store-link' ? 'Copied' : 'Copy link'}
+                          {copied === 'whatsapp-link' ? 'Copied' : 'Copy link'}
                         </button>
                         <button
                           type="button"
                           onClick={() =>
                             shareOnWhatsApp(
                               referralLink,
-                              'Shop with EmmyTech through my personal referral link'
+                              'Message EmmyTech through my personal Ambassador link'
                             )
                           }
                           className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/[0.15]"

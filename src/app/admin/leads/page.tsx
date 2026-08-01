@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import {
   DollarSign,
   MoreHorizontal,
   Copy,
+  ExternalLink,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
@@ -1028,6 +1030,13 @@ function ManageLeadModal({
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Quick actions</p>
               <div className="mt-4 grid gap-2">
+                <Link
+                  href={`/admin/leads/${lead.id}`}
+                  className="inline-flex h-10 items-center justify-start gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-emmy-primary/25 hover:bg-blue-50/60 hover:text-emmy-primary"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open Unified Timeline
+                </Link>
                 <Button variant="outline" onClick={onEdit} className="justify-start gap-2 bg-white">
                   <Edit className="h-4 w-4" />
                   Edit Lead Details

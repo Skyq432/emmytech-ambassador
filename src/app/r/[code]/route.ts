@@ -5,9 +5,12 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const VISITOR_COOKIE_NAME = 'emmytech_visitor_id';
+const VISITOR_ID_PATTERN = /^[a-z0-9:_-]{8,200}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FALLBACK_WHATSAPP_NUMBER = '2348146503700';
 
 const referralMessages = [
@@ -67,14 +70,18 @@ async function writeRouteLog(
   }
 }
 
-function redirectWithVisitorCookie(url: string, visitorId: string) {
+function redirectWithVisitorCookie(
+  request: NextRequest,
+  url: string,
+  visitorId: string
+) {
   const response = NextResponse.redirect(url);
 
   response.cookies.set({
     name: VISITOR_COOKIE_NAME,
     value: visitorId,
     httpOnly: true,
-    secure: true,
+    secure: request.nextUrl.protocol === 'https:',
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 365,
@@ -91,20 +98,35 @@ export async function GET(
   const cleanCode = decodeURIComponent(code).trim().toLowerCase();
 
   const existingVisitorId = request.cookies.get(VISITOR_COOKIE_NAME)?.value;
-  const visitorId = existingVisitorId || createVisitorId();
+  const suppliedVisitorId = request.nextUrl.searchParams.get('visitor_id')?.trim();
+  const visitorId =
+    (suppliedVisitorId && VISITOR_ID_PATTERN.test(suppliedVisitorId)
+      ? suppliedVisitorId.toLowerCase()
+      : null) ||
+    (existingVisitorId && VISITOR_ID_PATTERN.test(existingVisitorId)
+      ? existingVisitorId.toLowerCase()
+      : null) ||
+    createVisitorId();
 
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return redirectWithVisitorCookie(
+      request,
       buildWhatsappLink(null, 'Hello Emmytechnology, I would like to know more.'),
       visitorId
     );
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 
   try {
+    const forwardedFor = request.headers.get('x-forwarded-for');
     const ipAddress =
-      request.headers.get('x-forwarded-for') ||
+      forwardedFor?.split(',')[0]?.trim() ||
       request.headers.get('x-real-ip') ||
       null;
 
@@ -118,8 +140,8 @@ export async function GET(
       {
         visitor_id: visitorId,
         had_existing_cookie: Boolean(existingVisitorId),
-        ipAddress,
-        userAgent,
+        has_ip_address: Boolean(ipAddress),
+        has_user_agent: Boolean(userAgent),
       }
     );
 
@@ -139,6 +161,7 @@ export async function GET(
       );
 
       return redirectWithVisitorCookie(
+        request,
         buildWhatsappLink(null, 'Hello Emmytechnology, I would like to know more.'),
         visitorId
       );
@@ -162,6 +185,7 @@ export async function GET(
       );
 
       return redirectWithVisitorCookie(
+        request,
         buildWhatsappLink(null, 'Hello Emmytechnology, I would like to know more.'),
         visitorId
       );
@@ -175,13 +199,28 @@ export async function GET(
     const referralCodeToTrack =
       ambassador.custom_referral_code || ambassador.referral_code || cleanCode;
 
-    const { error: rpcError } = await supabase.rpc(
-      'track_whatsapp_referral_click_v2',
+    const sourcePage = request.nextUrl.searchParams
+      .get('source_page')
+      ?.slice(0, 500) || null;
+    const rawProductId = request.nextUrl.searchParams.get('product_id');
+    const productId = rawProductId && UUID_PATTERN.test(rawProductId)
+      ? rawProductId
+      : null;
+    const searchQuery = request.nextUrl.searchParams
+      .get('search_query')
+      ?.trim()
+      .slice(0, 300) || null;
+
+    const { data: trackingResult, error: rpcError } = await supabase.rpc(
+      'track_whatsapp_referral_click_v3',
       {
         p_referral_code: referralCodeToTrack,
         p_ip_address: ipAddress,
         p_user_agent: userAgent,
         p_visitor_id: visitorId,
+        p_source_page: sourcePage,
+        p_product_id: productId,
+        p_search_query: searchQuery,
       }
     );
 
@@ -195,21 +234,29 @@ export async function GET(
         supabase,
         cleanCode,
         'rpc_success',
-        'Referral click tracked successfully',
+        'WhatsApp referral click tracked successfully',
         {
           referral_code_to_track: referralCodeToTrack,
           visitor_id: visitorId,
+          referral_click_id: trackingResult?.referral_click_id || null,
+          existing_lead: trackingResult?.existing_lead || false,
         }
       );
     }
 
-    const finalMessage = getRotatingMessage(ambassadorName);
+    const clickReference = trackingResult?.referral_click_id
+      ? `\n\nReference: WA-${String(trackingResult.referral_click_id)
+          .replace(/-/g, '')
+          .slice(0, 8)
+          .toUpperCase()}`
+      : '';
+    const finalMessage = `${getRotatingMessage(ambassadorName)}${clickReference}`;
     const finalWhatsappLink = buildWhatsappLink(
       ambassador.whatsapp_link,
       finalMessage
     );
 
-    return redirectWithVisitorCookie(finalWhatsappLink, visitorId);
+    return redirectWithVisitorCookie(request, finalWhatsappLink, visitorId);
   } catch (error: any) {
     await writeRouteLog(
       supabase,
@@ -222,6 +269,7 @@ export async function GET(
     );
 
     return redirectWithVisitorCookie(
+      request,
       buildWhatsappLink(null, 'Hello Emmytechnology, I would like to know more.'),
       visitorId
     );

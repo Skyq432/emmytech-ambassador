@@ -23,6 +23,7 @@ const pageMeta: Record<string, { title: string; eyebrow: string }> = {
   '/admin/ambassadors': { title: 'Ambassadors', eyebrow: 'People and performance' },
   '/admin/activities': { title: 'Activity Reviews', eyebrow: 'Approvals queue' },
   '/admin/leads': { title: 'Lead Management', eyebrow: 'Pipeline operations' },
+  '/admin/whatsapp-intake': { title: 'WhatsApp Intake', eyebrow: 'Identity workspace' },
   '/admin/conversions': { title: 'Conversions', eyebrow: 'Sales and commission' },
   '/admin/products': { title: 'Products', eyebrow: 'Catalogue management' },
   '/admin/invite': { title: 'Invitations', eyebrow: 'Ambassador onboarding' },
@@ -37,6 +38,12 @@ export function DashboardHeader({ user, profile }: DashboardHeaderProps) {
     if (pageMeta[pathname]) return pageMeta[pathname];
     if (pathname.startsWith('/admin/ambassadors/')) {
       return { title: 'Ambassador Profile', eyebrow: 'People and performance' };
+    }
+    if (pathname.startsWith('/admin/leads/')) {
+      return { title: 'Unified Lead Timeline', eyebrow: 'Identity and customer journey' };
+    }
+    if (pathname.startsWith('/dashboard/leads/')) {
+      return { title: 'Lead Timeline', eyebrow: 'Referral customer journey' };
     }
     return currentUser?.role === 'admin'
       ? { title: 'Admin Workspace', eyebrow: 'EmmyTech operations' }

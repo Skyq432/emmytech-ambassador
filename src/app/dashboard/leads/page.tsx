@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,7 @@ import {
   Pencil,
   X,
   AlertCircle,
+  History,
 } from 'lucide-react';
 
 interface Lead {
@@ -266,7 +268,7 @@ export default function LeadsPage() {
             <CardContent className="p-8 text-center">
               <p className="text-muted-foreground">No leads yet</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Share your store or Spin Wheel referral link to start receiving leads.
+                Share your WhatsApp or Spin Wheel referral link to start receiving leads.
               </p>
             </CardContent>
           </Card>
@@ -313,17 +315,26 @@ export default function LeadsPage() {
                     </div>
                   </div>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-2 sm:w-auto"
-                    disabled={lead.edit_status === 'pending'}
-                    onClick={() => openEditModal(lead)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Update Lead
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/dashboard/leads/${lead.id}`}
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-emmy-primary/25 hover:bg-blue-50/60 hover:text-emmy-primary"
+                    >
+                      <History className="h-4 w-4" />
+                      View timeline
+                    </Link>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 sm:w-auto"
+                      disabled={lead.edit_status === 'pending'}
+                      onClick={() => openEditModal(lead)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Update Lead
+                    </Button>
+                  </div>
                 </div>
 
                 {lead.edit_status === 'pending' && (
