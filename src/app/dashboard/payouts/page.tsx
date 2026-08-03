@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, TrendingUp, Wallet } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
 
 interface Payout {
   id: string;
@@ -29,9 +30,11 @@ export default function AmbassadorPayoutsPage() {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   const fetchData = async () => {
     try {
@@ -52,6 +55,8 @@ export default function AmbassadorPayoutsPage() {
         .from('payouts')
         .select('*')
         .eq('ambassador_id', ambData?.id)
+        .gte('created_at', range.startIso)
+        .lt('created_at', range.endExclusiveIso)
         .order('created_at', { ascending: false });
 
       setPayouts(payData || []);
@@ -61,6 +66,14 @@ export default function AmbassadorPayoutsPage() {
       setLoading(false);
     }
   };
+
+  const periodCashedOut = payouts
+    .filter((payout) => payout.status === 'paid')
+    .reduce((total, payout) => total + Number(payout.amount || 0), 0);
+
+  const periodPointsPaid = payouts
+    .filter((payout) => payout.status === 'paid')
+    .reduce((total, payout) => total + Number(payout.points_paid || 0), 0);
 
   if (loading) {
     return (
@@ -99,8 +112,8 @@ export default function AmbassadorPayoutsPage() {
                 <DollarSign className="h-5 w-5 text-emmy-secondary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Cashed Out</p>
-                <p className="text-2xl font-bold">{formatCurrency(stats?.total_cashed_out || 0)}</p>
+                <p className="text-sm text-muted-foreground">Cashed Out in Period</p>
+                <p className="text-2xl font-bold">{formatCurrency(periodCashedOut)}</p>
               </div>
             </div>
           </CardContent>
@@ -112,8 +125,8 @@ export default function AmbassadorPayoutsPage() {
                 <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Points</p>
-                <p className="text-2xl font-bold">{stats?.total_points || 0}</p>
+                <p className="text-sm text-muted-foreground">Points Paid in Period</p>
+                <p className="text-2xl font-bold">{periodPointsPaid}</p>
               </div>
             </div>
           </CardContent>

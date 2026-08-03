@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatDate } from '@/lib/utils';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
 import {
   Phone,
   User,
@@ -62,9 +63,11 @@ export default function LeadsPage() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
 
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     fetchLeads();
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   async function fetchLeads() {
     try {
@@ -114,6 +117,8 @@ export default function LeadsPage() {
         )
         .eq('ambassador_id', ambassador.id)
         .is('merged_into_lead_id', null)
+        .gte('created_at', range.startIso)
+        .lt('created_at', range.endExclusiveIso)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

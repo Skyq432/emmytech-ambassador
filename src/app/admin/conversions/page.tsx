@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
 
 interface Conversion {
   id: string;
@@ -34,6 +35,8 @@ export default function ConversionsPage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('all');
 
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     async function fetchConversions() {
       try {
@@ -44,6 +47,8 @@ export default function ConversionsPage() {
         const { data, error } = await supabase
           .from('conversions')
           .select('*, ambassadors(id, users(name)), leads(customer_phone)')
+          .gte('approved_at', range.startIso)
+          .lt('approved_at', range.endExclusiveIso)
           .order('approved_at', { ascending: false });
 
         if (error) throw error;
@@ -71,7 +76,7 @@ export default function ConversionsPage() {
     }
 
     fetchConversions();
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   const filtered = conversions.filter(c => {
     const matchesSearch = c.ambassador_name.toLowerCase().includes(search.toLowerCase()) || 

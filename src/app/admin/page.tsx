@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate, formatNumber, formatCurrency } from '@/lib/utils';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
+import { ReportingPeriodPanel } from '@/components/reporting/reporting-period-panel';
 
 interface AdminStats {
   totalAmbassadors: number;
@@ -72,9 +74,14 @@ export default function AdminOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     async function fetchAdminData() {
       try {
+        setLoading(true);
+        setError(null);
+
         const supabase = createClient();
 
         const {
@@ -83,191 +90,209 @@ export default function AdminOverview() {
 
         if (!session?.user) throw new Error('Not authenticated');
 
-        /*
-          IMPORTANT RULE:
-          - Soft deleted ambassadors have status = "deleted".
-          - Admin overview should not count or rank deleted ambassadors.
-          - Business history can still remain in Leads/Conversions pages,
-            but this dashboard should show current operational data only.
-        */
-
-        // Fetch ambassadors excluding soft-deleted records
-        const { data: ambassadorsData, error: ambassadorsError } = await supabase
-          .from('ambassadors')
-          .select('id, status')
-          .neq('status', 'deleted');
-
-        if (ambassadorsError) throw ambassadorsError;
-
-        const activeCount =
-          ambassadorsData?.filter((a) => a.status === 'active').length || 0;
-
-        // Pending activities only from non-deleted ambassadors
-        const { data: pendingActivities, error: pendingError } = await supabase
-          .from('activities')
-          .select(
-            `
-              id,
-              status,
-              ambassadors!inner (
+        const [
+          newAmbassadorsResponse,
+          activeAmbassadorsResponse,
+          pendingActivitiesResponse,
+          pendingLeadEditsResponse,
+          unreadNotificationsResponse,
+          leadsResponse,
+          conversionsResponse,
+          recentActivitiesResponse,
+        ] = await Promise.all([
+          supabase
+            .from('ambassadors')
+            .select('id, status, created_at')
+            .neq('status', 'deleted')
+            .gte('created_at', range.startIso)
+            .lt('created_at', range.endExclusiveIso),
+          supabase
+            .from('ambassadors')
+            .select(
+              `
                 id,
-                status
-              )
-            `,
-            { count: 'exact' }
-          )
-          .eq('status', 'pending_review')
-          .neq('ambassadors.status', 'deleted');
-
-        if (pendingError) throw pendingError;
-
-        // Pending lead edit requests from non-deleted ambassadors
-        const { data: pendingLeadEdits, error: leadEditError } = await supabase
-          .from('leads')
-          .select(
-            `
-              id,
-              edit_status,
-              ambassadors!inner (
-                id,
-                status
-              )
-            `,
-            { count: 'exact' }
-          )
-          .eq('edit_status', 'pending')
-          .neq('ambassadors.status', 'deleted');
-
-        if (leadEditError) throw leadEditError;
-
-        // Admin alerts, for example repeat conversions without commission
-        const { data: unreadNotifications, error: notificationError } =
-          await supabase
-            .from('admin_notifications')
-            .select('id', { count: 'exact' })
-            .eq('is_read', false);
-
-        if (notificationError) throw notificationError;
-
-        // Leads only from non-deleted ambassadors for dashboard summary
-        const { data: leadsData, error: leadsError } = await supabase
-          .from('leads')
-          .select(
-            `
-              id,
-              ambassadors!inner (
-                id,
-                status
-              )
-            `,
-            { count: 'exact' }
-          )
-          .neq('ambassadors.status', 'deleted');
-
-        if (leadsError) throw leadsError;
-
-        // Conversions only from non-deleted ambassadors for dashboard summary
-        const { data: conversionsData, error: conversionsError } = await supabase
-          .from('conversions')
-          .select(
-            `
-              id,
-              amount,
-              ambassadors!inner (
-                id,
-                status
-              )
-            `
-          )
-          .neq('ambassadors.status', 'deleted');
-
-        if (conversionsError) throw conversionsError;
-
-        const totalRevenue =
-          conversionsData?.reduce((sum, conversion: any) => {
-            return sum + Number(conversion.amount || 0);
-          }, 0) || 0;
-
-        setStats({
-          totalAmbassadors: ambassadorsData?.length || 0,
-          activeAmbassadors: activeCount,
-          pendingApprovals: pendingActivities?.length || 0,
-          totalLeads: leadsData?.length || 0,
-          totalConversions: conversionsData?.length || 0,
-          totalRevenue,
-          pendingLeadEdits: pendingLeadEdits?.length || 0,
-          unreadNotifications: unreadNotifications?.length || 0,
-        });
-
-        // Recent activity from non-deleted ambassadors only
-        const { data: recentActivities, error: recentError } = await supabase
-          .from('activities')
-          .select(
-            `
-              id,
-              platform,
-              submitted_at,
-              status,
-              ambassadors!inner (
                 ambassador_tag,
                 status,
-                users (
-                  name
+                users(name)
+              `
+            )
+            .eq('status', 'active'),
+          supabase
+            .from('activities')
+            .select(
+              `
+                id,
+                status,
+                ambassadors!inner (
+                  id,
+                  status
                 )
-              )
-            `
-          )
-          .neq('ambassadors.status', 'deleted')
-          .order('submitted_at', { ascending: false })
-          .limit(5);
+              `
+            )
+            .eq('status', 'pending_review')
+            .neq('ambassadors.status', 'deleted'),
+          supabase
+            .from('leads')
+            .select(
+              `
+                id,
+                edit_status,
+                ambassadors!inner (
+                  id,
+                  status
+                )
+              `
+            )
+            .eq('edit_status', 'pending')
+            .neq('ambassadors.status', 'deleted'),
+          supabase
+            .from('admin_notifications')
+            .select('id')
+            .eq('is_read', false),
+          supabase
+            .from('leads')
+            .select(
+              `
+                id,
+                ambassador_id,
+                ambassadors!inner (
+                  id,
+                  status
+                )
+              `
+            )
+            .neq('ambassadors.status', 'deleted')
+            .is('merged_into_lead_id', null)
+            .gte('created_at', range.startIso)
+            .lt('created_at', range.endExclusiveIso),
+          supabase
+            .from('conversions')
+            .select(
+              `
+                id,
+                amount,
+                ambassador_id,
+                ambassadors!inner (
+                  id,
+                  status
+                )
+              `
+            )
+            .neq('ambassadors.status', 'deleted')
+            .gte('approved_at', range.startIso)
+            .lt('approved_at', range.endExclusiveIso),
+          supabase
+            .from('activities')
+            .select(
+              `
+                id,
+                platform,
+                submitted_at,
+                status,
+                ambassadors!inner (
+                  ambassador_tag,
+                  status,
+                  users (
+                    name
+                  )
+                )
+              `
+            )
+            .neq('ambassadors.status', 'deleted')
+            .gte('submitted_at', range.startIso)
+            .lt('submitted_at', range.endExclusiveIso)
+            .order('submitted_at', { ascending: false })
+            .limit(5),
+        ]);
 
-        if (recentError) throw recentError;
+        const errors = [
+          newAmbassadorsResponse.error,
+          activeAmbassadorsResponse.error,
+          pendingActivitiesResponse.error,
+          pendingLeadEditsResponse.error,
+          unreadNotificationsResponse.error,
+          leadsResponse.error,
+          conversionsResponse.error,
+          recentActivitiesResponse.error,
+        ].filter(Boolean);
 
-        const formattedActivity: RecentActivity[] = (recentActivities || []).map(
-          (activity: any) => ({
-            id: activity.id,
-            type: 'post',
-            ambassador_name: activity.ambassadors?.users?.name || 'Unknown',
-            ambassador_tag: activity.ambassadors?.ambassador_tag || '',
-            platform: activity.platform,
-            created_at: activity.submitted_at,
-            status: activity.status,
-          })
+        if (errors.length) throw errors[0];
+
+        const newAmbassadorsData = newAmbassadorsResponse.data || [];
+        const activeAmbassadorsData = activeAmbassadorsResponse.data || [];
+        const leadsData = leadsResponse.data || [];
+        const conversionsData = conversionsResponse.data || [];
+
+        const totalRevenue = conversionsData.reduce(
+          (sum, conversion: any) => sum + Number(conversion.amount || 0),
+          0
         );
+
+        setStats({
+          totalAmbassadors: newAmbassadorsData.length,
+          activeAmbassadors: activeAmbassadorsData.length,
+          pendingApprovals: pendingActivitiesResponse.data?.length || 0,
+          totalLeads: leadsData.length,
+          totalConversions: conversionsData.length,
+          totalRevenue,
+          pendingLeadEdits: pendingLeadEditsResponse.data?.length || 0,
+          unreadNotifications: unreadNotificationsResponse.data?.length || 0,
+        });
+
+        const formattedActivity: RecentActivity[] = (
+          recentActivitiesResponse.data || []
+        ).map((activity: any) => ({
+          id: activity.id,
+          type: 'post',
+          ambassador_name: activity.ambassadors?.users?.name || 'Unknown',
+          ambassador_tag: activity.ambassadors?.ambassador_tag || '',
+          platform: activity.platform,
+          created_at: activity.submitted_at,
+          status: activity.status,
+        }));
 
         setRecentActivity(formattedActivity);
 
-        // Top performers should be active ambassadors only, ranked by leads then conversions
-        const { data: topAmbassadorsData, error: topError } = await supabase
-          .from('ambassadors')
-          .select(
-            `
-              id,
-              ambassador_tag,
-              total_leads,
-              total_conversions,
-              status,
-              users (
-                name
-              )
-            `
-          )
-          .eq('status', 'active')
-          .order('total_leads', { ascending: false })
-          .order('total_conversions', { ascending: false })
-          .limit(5);
+        const leadCounts = new Map<string, number>();
+        for (const lead of leadsData as any[]) {
+          if (!lead.ambassador_id) continue;
+          leadCounts.set(
+            lead.ambassador_id,
+            (leadCounts.get(lead.ambassador_id) || 0) + 1
+          );
+        }
 
-        if (topError) throw topError;
+        const conversionCounts = new Map<string, number>();
+        for (const conversion of conversionsData as any[]) {
+          if (!conversion.ambassador_id) continue;
+          conversionCounts.set(
+            conversion.ambassador_id,
+            (conversionCounts.get(conversion.ambassador_id) || 0) + 1
+          );
+        }
 
-        const formattedTop: TopAmbassador[] = (topAmbassadorsData || []).map(
-          (ambassador: any, index: number) => ({
-            rank: index + 1,
+        const formattedTop: TopAmbassador[] = (activeAmbassadorsData as any[])
+          .map((ambassador: any) => ({
+            rank: 0,
             name: ambassador.users?.name || 'Unknown',
             tag: ambassador.ambassador_tag,
-            total_leads: ambassador.total_leads || 0,
-            total_conversions: ambassador.total_conversions || 0,
-          })
-        );
+            total_leads: leadCounts.get(ambassador.id) || 0,
+            total_conversions: conversionCounts.get(ambassador.id) || 0,
+          }))
+          .filter(
+            (ambassador) =>
+              ambassador.total_leads > 0 || ambassador.total_conversions > 0
+          )
+          .sort(
+            (a, b) =>
+              b.total_leads - a.total_leads ||
+              b.total_conversions - a.total_conversions
+          )
+          .slice(0, 5)
+          .map((ambassador, index) => ({
+            ...ambassador,
+            rank: index + 1,
+          }));
 
         setTopAmbassadors(formattedTop);
       } catch (err: any) {
@@ -278,11 +303,12 @@ export default function AdminOverview() {
     }
 
     fetchAdminData();
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   if (loading) {
     return (
       <div className="space-y-6">
+        <ReportingPeriodPanel audience="admin" />
         <div className="h-8 w-64 animate-pulse rounded bg-slate-200/50" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((item) => (
@@ -309,9 +335,9 @@ export default function AdminOverview() {
 
   const statCards = [
     {
-      label: 'Total Ambassadors',
+      label: 'New Ambassadors',
       value: stats.totalAmbassadors.toString(),
-      sub: `${stats.activeAmbassadors} active`,
+      sub: `${stats.activeAmbassadors} active now`,
       icon: Users,
       color: 'bg-blue-500',
       href: '/admin/ambassadors',
@@ -325,9 +351,9 @@ export default function AdminOverview() {
       href: stats.pendingLeadEdits > 0 || stats.unreadNotifications > 0 ? '/admin/leads' : '/admin/activities',
     },
     {
-      label: 'Total Leads',
+      label: 'Leads',
       value: formatNumber(stats.totalLeads),
-      sub: 'Active ambassadors',
+      sub: range.shortLabel,
       icon: MessageCircle,
       color: 'bg-emerald-500',
       href: '/admin/leads',
@@ -335,7 +361,7 @@ export default function AdminOverview() {
     {
       label: 'Revenue',
       value: formatCurrency(stats.totalRevenue),
-      sub: `${stats.totalConversions} conversions`,
+      sub: `${stats.totalConversions} conversions · ${range.label}`,
       icon: TrendingUp,
       color: 'bg-violet-500',
       href: '/admin/conversions',
@@ -379,6 +405,8 @@ export default function AdminOverview() {
           Administrator
         </Badge>
       </div>
+
+      <ReportingPeriodPanel audience="admin" />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -447,9 +475,10 @@ export default function AdminOverview() {
         <Card className="border border-slate-200 shadow-sm lg:col-span-2">
           <CardContent className="p-6">
             <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Recent Activity
-              </h3>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Recent Activity</h3>
+                <p className="mt-1 text-xs text-slate-400">{range.shortLabel}</p>
+              </div>
 
               <Link href="/admin/activities">
                 <Button
@@ -568,9 +597,10 @@ export default function AdminOverview() {
         {/* Top Ambassadors */}
         <Card className="border border-slate-200 shadow-sm">
           <CardContent className="p-6">
-            <h3 className="mb-6 text-lg font-semibold text-slate-900">
-              Top Performers
-            </h3>
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-slate-900">Top Performers</h3>
+              <p className="mt-1 text-xs text-slate-400">Based on leads and conversions in {range.shortLabel}</p>
+            </div>
 
             <div className="space-y-3">
               {topAmbassadors.length === 0 ? (

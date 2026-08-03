@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Trophy, Medal, Award, Users, TrendingUp } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
 
 interface LeaderboardEntry {
   rank: number;
@@ -18,45 +19,99 @@ export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     async function fetchLeaderboard() {
       const supabase = createClient();
 
-      const { data, error } = await supabase
-        .from('ambassadors')
-        .select(`
-          id,
-          ambassador_tag,
-          total_leads,
-          total_conversions,
-          status,
-          users(name)
-        `)
-        .eq('status', 'active')
-        .order('total_leads', { ascending: false })
-        .order('total_conversions', { ascending: false });
+      const [ambassadorsResponse, leadsResponse, conversionsResponse] =
+        await Promise.all([
+          supabase
+            .from('ambassadors')
+            .select(
+              `
+                id,
+                ambassador_tag,
+                status,
+                users(name)
+              `
+            )
+            .eq('status', 'active'),
+          supabase
+            .from('leads')
+            .select('ambassador_id')
+            .eq('approved_as_lead', true)
+            .is('merged_into_lead_id', null)
+            .gte('created_at', range.startIso)
+            .lt('created_at', range.endExclusiveIso),
+          supabase
+            .from('conversions')
+            .select('ambassador_id')
+            .gte('approved_at', range.startIso)
+            .lt('approved_at', range.endExclusiveIso),
+        ]);
 
-      if (error) {
-        console.error('Error loading leaderboard:', error);
+      const firstError =
+        ambassadorsResponse.error ||
+        leadsResponse.error ||
+        conversionsResponse.error;
+
+      if (firstError) {
+        console.error('Error loading leaderboard:', firstError);
         setEntries([]);
         setLoading(false);
         return;
       }
 
-      const ranked = (data || []).map((entry: any, index: number) => ({
-        rank: index + 1,
-        id: entry.id,
-        full_name: entry.users?.name || entry.ambassador_tag || 'Ambassador',
-        total_leads: entry.total_leads || 0,
-        total_conversions: entry.total_conversions || 0,
-      }));
+      const leadCounts = new Map<string, number>();
+      for (const lead of leadsResponse.data || []) {
+        if (!lead.ambassador_id) continue;
+        leadCounts.set(
+          lead.ambassador_id,
+          (leadCounts.get(lead.ambassador_id) || 0) + 1
+        );
+      }
+
+      const conversionCounts = new Map<string, number>();
+      for (const conversion of conversionsResponse.data || []) {
+        if (!conversion.ambassador_id) continue;
+        conversionCounts.set(
+          conversion.ambassador_id,
+          (conversionCounts.get(conversion.ambassador_id) || 0) + 1
+        );
+      }
+
+      const ranked = (ambassadorsResponse.data || [])
+        .map((entry: any) => ({
+          rank: 0,
+          id: entry.id,
+          full_name:
+            entry.users?.name || entry.ambassador_tag || 'Ambassador',
+          total_leads: leadCounts.get(entry.id) || 0,
+          total_conversions: conversionCounts.get(entry.id) || 0,
+        }))
+        .filter(
+          (entry) =>
+            entry.total_leads > 0 || entry.total_conversions > 0
+        )
+        .sort(
+          (a, b) =>
+            b.total_leads - a.total_leads ||
+            b.total_conversions - a.total_conversions
+        )
+        .map((entry, index) => ({
+          ...entry,
+          rank: index + 1,
+        }));
 
       setEntries(ranked);
       setLoading(false);
     }
 
+    setLoading(true);
     fetchLeaderboard();
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   if (loading) {
     return (
@@ -76,7 +131,7 @@ export default function LeaderboardPage() {
           Leaderboard
         </h1>
         <p className="mt-1 text-sm text-slate-500 sm:text-base">
-          Ambassador ranking by leads first, then conversions.
+          Ambassador ranking by leads first, then conversions for the selected period.
         </p>
       </div>
 

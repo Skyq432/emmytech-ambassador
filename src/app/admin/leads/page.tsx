@@ -33,6 +33,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
 
 type LeadStatus = 'new' | 'pending' | 'contacted' | 'converted' | 'lost';
 type EditStatus = 'none' | 'pending' | 'approved' | 'rejected' | null;
@@ -144,10 +145,12 @@ export default function AdminLeadsPage() {
 
   const supabase = createClient();
 
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     fetchPageData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   async function fetchPageData() {
     try {
@@ -167,6 +170,8 @@ export default function AdminLeadsPage() {
         `
         )
         .is('merged_into_lead_id', null)
+        .gte('created_at', range.startIso)
+        .lt('created_at', range.endExclusiveIso)
         .order('created_at', { ascending: false });
 
       if (leadError) throw leadError;
@@ -174,6 +179,8 @@ export default function AdminLeadsPage() {
       const { data: conversionData, error: conversionError } = await supabase
         .from('conversions')
         .select('*')
+        .gte('approved_at', range.startIso)
+        .lt('approved_at', range.endExclusiveIso)
         .order('approved_at', { ascending: false });
 
       if (conversionError) throw conversionError;
