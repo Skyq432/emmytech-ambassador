@@ -19,6 +19,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
 
 type BadgeVariant =
   | 'default'
@@ -65,6 +66,8 @@ export default function ActivityPage() {
     'all' | 'approved' | 'pending_review' | 'rejected'
   >('all');
 
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     async function fetchActivities() {
       try {
@@ -89,6 +92,8 @@ export default function ActivityPage() {
           .from('activities')
           .select('*')
           .eq('ambassador_id', ambassadorData.id)
+          .gte('submitted_at', range.startIso)
+          .lt('submitted_at', range.endExclusiveIso)
           .order('submitted_at', { ascending: false });
 
         if (error) throw error;
@@ -102,7 +107,7 @@ export default function ActivityPage() {
     }
 
     fetchActivities();
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   const getStatusBadge = (status: Activity['status']) => {
     const variants: {

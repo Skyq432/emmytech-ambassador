@@ -9,6 +9,7 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  CircleGauge,
   CreditCard,
   LayoutDashboard,
   Link2,
@@ -35,6 +36,7 @@ interface NavItem {
 
 const adminNav: NavItem[] = [
   { label: 'Overview', href: '/admin', icon: LayoutDashboard, group: 'workspace' },
+  { label: 'Spin Wheel Admin', href: '/admin/spin-wheel', icon: CircleGauge, group: 'workspace' },
   { label: 'Ambassadors', href: '/admin/ambassadors', icon: Users, group: 'manage' },
   { label: 'Activities', href: '/admin/activities', icon: Activity, group: 'manage' },
   { label: 'Leads', href: '/admin/leads', icon: MessageCircle, group: 'manage' },

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
 
 type ActivityItemType =
   | 'post'
@@ -88,9 +89,11 @@ export default function AdminActivitiesPage() {
 
   const supabase = createClient();
 
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     fetchActivities();
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   async function fetchActivities() {
     try {
@@ -116,6 +119,8 @@ export default function AdminActivitiesPage() {
             )
           `
           )
+          .gte('submitted_at', range.startIso)
+          .lt('submitted_at', range.endExclusiveIso)
           .order('submitted_at', { ascending: false })
           .limit(80),
         supabase
@@ -129,6 +134,8 @@ export default function AdminActivitiesPage() {
             )
           `
           )
+          .gte('created_at', range.startIso)
+          .lt('created_at', range.endExclusiveIso)
           .order('created_at', { ascending: false })
           .limit(120),
         supabase
@@ -142,6 +149,8 @@ export default function AdminActivitiesPage() {
             )
           `
           )
+          .gte('created_at', range.startIso)
+          .lt('created_at', range.endExclusiveIso)
           .order('created_at', { ascending: false })
           .limit(80),
         supabase
@@ -155,6 +164,8 @@ export default function AdminActivitiesPage() {
             )
           `
           )
+          .gte('created_at', range.startIso)
+          .lt('created_at', range.endExclusiveIso)
           .order('created_at', { ascending: false })
           .limit(80),
         supabase
@@ -168,6 +179,8 @@ export default function AdminActivitiesPage() {
             )
           `
           )
+          .gte('created_at', range.startIso)
+          .lt('created_at', range.endExclusiveIso)
           .order('created_at', { ascending: false })
           .limit(80),
       ]);

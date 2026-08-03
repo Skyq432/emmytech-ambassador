@@ -25,6 +25,8 @@ import {
   Wallet,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
+import { ReportingPeriodPanel } from '@/components/reporting/reporting-period-panel';
 
 interface AmbassadorData {
   id: string;
@@ -60,11 +62,17 @@ export default function AmbassadorDashboard() {
     leads: 0,
   });
 
+  const [periodConversions, setPeriodConversions] = useState(0);
+  const [periodPaid, setPeriodPaid] = useState(0);
+  const { range } = useReportingPeriod();
+
   useEffect(() => {
     async function fetchData() {
       const supabase = createClient();
 
       try {
+        setLoading(true);
+
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -84,15 +92,14 @@ export default function AmbassadorDashboard() {
           };
 
           const code =
-            formattedAmbassador.custom_referral_code || formattedAmbassador.referral_code;
+            formattedAmbassador.custom_referral_code ||
+            formattedAmbassador.referral_code;
 
           setAmbassador(formattedAmbassador);
           setReferralLink(`https://ambassador.emmytechnology.com/r/${code}`);
 
-          const configuredSpinOrigin = process.env.NEXT_PUBLIC_SPIN_WHEEL_URL?.replace(
-            /\/$/,
-            ''
-          );
+          const configuredSpinOrigin =
+            process.env.NEXT_PUBLIC_SPIN_WHEEL_URL?.replace(/\/$/, '');
           const isLocalBrowser = ['localhost', '127.0.0.1'].includes(
             window.location.hostname
           );
@@ -101,72 +108,110 @@ export default function AmbassadorDashboard() {
             (isLocalBrowser
               ? 'http://127.0.0.1:3000'
               : 'https://spinwheel.emmytechnology.com');
+
           setSpinLink(`${spinOrigin}/a/${encodeURIComponent(code)}`);
 
           const [
-            { count },
-            { count: whatsappClickCount, error: whatsappClickError },
-            { data: whatsappLeadRows, error: whatsappLeadError },
-            { data: spinRows, error: spinError },
+            leadsResponse,
+            conversionsResponse,
+            payoutsResponse,
+            whatsappClicksResponse,
+            whatsappLeadsResponse,
+            spinClicksResponse,
+            spinLeadsResponse,
           ] = await Promise.all([
             supabase
               .from('leads')
               .select('*', { count: 'exact', head: true })
               .eq('ambassador_id', ambData.id)
               .eq('approved_as_lead', true)
-              .is('merged_into_lead_id', null),
+              .is('merged_into_lead_id', null)
+              .gte('created_at', range.startIso)
+              .lt('created_at', range.endExclusiveIso),
+            supabase
+              .from('conversions')
+              .select('id', { count: 'exact', head: true })
+              .eq('ambassador_id', ambData.id)
+              .gte('approved_at', range.startIso)
+              .lt('approved_at', range.endExclusiveIso),
+            supabase
+              .from('payouts')
+              .select('amount, status, paid_at, created_at')
+              .eq('ambassador_id', ambData.id)
+              .eq('status', 'paid')
+              .gte('paid_at', range.startIso)
+              .lt('paid_at', range.endExclusiveIso),
             supabase
               .from('referral_clicks')
               .select('*', { count: 'exact', head: true })
               .eq('ambassador_id', ambData.id)
-              .eq('source', 'whatsapp'),
+              .eq('source', 'whatsapp')
+              .gte('created_at', range.startIso)
+              .lt('created_at', range.endExclusiveIso),
             supabase
               .from('referral_clicks')
               .select('lead_id')
               .eq('ambassador_id', ambData.id)
               .eq('source', 'whatsapp')
-              .eq('counted_as_lead', true),
+              .eq('counted_as_lead', true)
+              .gte('created_at', range.startIso)
+              .lt('created_at', range.endExclusiveIso),
+            supabase
+              .from('referral_clicks')
+              .select('*', { count: 'exact', head: true })
+              .eq('ambassador_id', ambData.id)
+              .eq('source', 'spin_wheel')
+              .gte('created_at', range.startIso)
+              .lt('created_at', range.endExclusiveIso),
             supabase
               .from('ambassador_spin_attributions')
-              .select('visitor_id, open_count, credited_as_lead')
-              .eq('ambassador_id', ambData.id),
+              .select('*', { count: 'exact', head: true })
+              .eq('ambassador_id', ambData.id)
+              .eq('credited_as_lead', true)
+              .gte('qualified_at', range.startIso)
+              .lt('qualified_at', range.endExclusiveIso),
           ]);
 
-          setActualLeads(count || 0);
+          const responses = [
+            leadsResponse,
+            conversionsResponse,
+            payoutsResponse,
+            whatsappClicksResponse,
+            whatsappLeadsResponse,
+            spinClicksResponse,
+            spinLeadsResponse,
+          ];
 
-          if (whatsappClickError || whatsappLeadError) {
-            console.error(
-              'Unable to load WhatsApp referral stats:',
-              whatsappClickError || whatsappLeadError
-            );
-          } else {
-            const linkedLeadIds = new Set(
-              (whatsappLeadRows || [])
-                .map((row) => row.lead_id)
-                .filter((leadId): leadId is string => Boolean(leadId))
-            );
-            const unlinkedLeadRows = (whatsappLeadRows || []).filter(
-              (row) => !row.lead_id
-            ).length;
+          const firstError = responses.find((response) => response.error)?.error;
+          if (firstError) throw firstError;
 
-            setWhatsappStats({
-              clicks: whatsappClickCount || 0,
-              leads: linkedLeadIds.size + unlinkedLeadRows,
-            });
-          }
+          setActualLeads(leadsResponse.count || 0);
+          setPeriodConversions(conversionsResponse.count || 0);
+          setPeriodPaid(
+            (payoutsResponse.data || []).reduce(
+              (total, payout) => total + Number(payout.amount || 0),
+              0
+            )
+          );
 
-          if (spinError) {
-            console.error('Unable to load Spin Wheel attribution stats:', spinError);
-          } else {
-            const rows = spinRows || [];
-            setSpinStats({
-              clicks: rows.reduce(
-                (total, row) => total + Number(row.open_count || 0),
-                0
-              ),
-              leads: rows.filter((row) => row.credited_as_lead).length,
-            });
-          }
+          const linkedLeadIds = new Set(
+            (whatsappLeadsResponse.data || [])
+              .map((row) => row.lead_id)
+              .filter((leadId): leadId is string => Boolean(leadId))
+          );
+          const unlinkedLeadRows = (whatsappLeadsResponse.data || []).filter(
+            (row) => !row.lead_id
+          ).length;
+
+          setWhatsappStats({
+            clicks: whatsappClicksResponse.count || 0,
+            leads: linkedLeadIds.size + unlinkedLeadRows,
+          });
+
+          setSpinStats({
+            clicks: spinClicksResponse.count || 0,
+            leads: spinLeadsResponse.count || 0,
+          });
         }
       } catch (error) {
         console.error('Error fetching ambassador dashboard:', error);
@@ -176,12 +221,12 @@ export default function AmbassadorDashboard() {
     }
 
     fetchData();
-  }, []);
+  }, [range.startIso, range.endExclusiveIso]);
 
   const conversionRate = useMemo(() => {
     if (!ambassador || actualLeads === 0) return 0;
-    return Math.min(100, Math.round((ambassador.total_conversions / actualLeads) * 100));
-  }, [ambassador, actualLeads]);
+    return Math.min(100, Math.round((periodConversions / actualLeads) * 100));
+  }, [ambassador, actualLeads, periodConversions]);
 
   function copyToClipboard(text: string, type: string) {
     navigator.clipboard.writeText(text);
@@ -204,6 +249,7 @@ export default function AmbassadorDashboard() {
   if (loading) {
     return (
       <div className="space-y-5">
+        <ReportingPeriodPanel audience="ambassador" />
         <div className="h-28 animate-pulse rounded-3xl bg-slate-200/60" />
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[1, 2, 3, 4].map((item) => (
@@ -235,22 +281,22 @@ export default function AmbassadorDashboard() {
     },
     {
       label: 'Conversions',
-      value: ambassador.total_conversions.toLocaleString(),
-      detail: `${conversionRate}% conversion rate`,
+      value: periodConversions.toLocaleString(),
+      detail: `${conversionRate}% conversion rate · ${range.label}`,
       icon: TrendingUp,
       iconClass: 'bg-emerald-50 text-emerald-600',
     },
     {
       label: 'Available Balance',
       value: `₦${Number(ambassador.available_balance || 0).toLocaleString('en-NG')}`,
-      detail: 'Ready for payout',
+      detail: 'Current balance (not period filtered)',
       icon: Wallet,
       iconClass: 'bg-amber-50 text-amber-600',
     },
     {
       label: 'Total Paid',
-      value: `₦${Number(ambassador.total_cashed_out || 0).toLocaleString('en-NG')}`,
-      detail: 'Lifetime earnings paid',
+      value: `₦${periodPaid.toLocaleString('en-NG')}`,
+      detail: `Paid in ${range.shortLabel}`,
       icon: CreditCard,
       iconClass: 'bg-violet-50 text-violet-600',
     },
@@ -305,6 +351,8 @@ export default function AmbassadorDashboard() {
           </Button>
         </Link>
       </section>
+
+      <ReportingPeriodPanel audience="ambassador" />
 
       <section className="grid gap-4 xl:grid-cols-[1.45fr_0.75fr]">
         <Card className="overflow-hidden border-0 bg-gradient-to-br from-emmy-primary via-emmy-primary to-emmy-primary-dark text-white shadow-[0_18px_45px_rgba(0,51,153,0.2)]">
@@ -530,7 +578,7 @@ export default function AmbassadorDashboard() {
                 <p className="mt-1 text-xs text-slate-500">Current conversion rate</p>
               </div>
               <span className="text-xs font-semibold text-emerald-600">
-                {ambassador.total_conversions} sales
+                {periodConversions} sales
               </span>
             </div>
 

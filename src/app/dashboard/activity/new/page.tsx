@@ -6,10 +6,21 @@ import { createClient } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Send } from 'lucide-react';
 
+
+const PLATFORM_OPTIONS = [
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'twitter', label: 'Twitter / X' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'threads', label: 'Threads' },
+] as const;
+
+type ActivityPlatform = (typeof PLATFORM_OPTIONS)[number]['value'];
+
 export default function SubmitActivityPage() {
   const router = useRouter();
 
-  const [platform, setPlatform] = useState('');
+  const [platform, setPlatform] = useState<ActivityPlatform | ''>('');
   const [postUrl, setPostUrl] = useState('');
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
@@ -48,14 +59,24 @@ export default function SubmitActivityPage() {
     const { error: insertError } = await supabase.from('activities').insert({
       ambassador_id: ambassador.id,
       platform,
-      post_url: postUrl,
-      caption,
+      post_url: postUrl.trim(),
+      caption: caption.trim() || null,
       status: 'pending_review',
       points_awarded: 0,
     });
 
     if (insertError) {
-      setErrorMsg(insertError.message);
+      if (
+        insertError.code === '23514' &&
+        insertError.message.includes('activities_platform_check')
+      ) {
+        setErrorMsg(
+          'This platform is not enabled in the database yet. Apply the local activity-platform migration and try again.'
+        );
+      } else {
+        setErrorMsg(insertError.message);
+      }
+
       setLoading(false);
       return;
     }
@@ -102,16 +123,16 @@ export default function SubmitActivityPage() {
 
               <select
                 value={platform}
-                onChange={(e) => setPlatform(e.target.value)}
+                onChange={(e) => setPlatform(e.target.value as ActivityPlatform | '')}
                 required
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-emmy-primary"
               >
-               <option value="">Select platform</option>
-                <option value="instagram">Instagram</option>
-                <option value="facebook">Facebook</option>
-                <option value="twitter">Twitter / X</option>
-                <option value="tiktok">TikTok</option>
-                <option value="threads">Threads</option>
+                <option value="">Select platform</option>
+                {PLATFORM_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
