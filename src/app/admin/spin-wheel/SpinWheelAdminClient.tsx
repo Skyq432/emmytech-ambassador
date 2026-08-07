@@ -1757,6 +1757,22 @@ function Rules({
           </select>
         </label>
 
+        <label>
+          <span>Reward help & guide</span>
+          <select
+            value={String(settings.get("reward_help_enabled") ?? false)}
+            onChange={(event) =>
+              saveSetting(
+                "reward_help_enabled",
+                event.target.value === "true"
+              )
+            }
+          >
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </label>
+
         <div>
           <span>Letter sequence</span>
           <strong>
