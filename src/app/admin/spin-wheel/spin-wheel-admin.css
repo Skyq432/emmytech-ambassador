@@ -1642,7 +1642,7 @@
 /* Rules and settings */
 .e40-settings-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(190px, 0.7fr)) minmax(280px, 1fr);
+  grid-template-columns: repeat(3, minmax(170px, 0.7fr)) minmax(260px, 1fr);
   align-items: end;
   gap: 14px;
 }
