@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
@@ -35,6 +35,13 @@ export default function LoginPage() {
 
   const router = useRouter();
 
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get('error');
+    if (reason === 'ambassador-only') {
+      setError('This login is only for ambassadors. Admin accounts cannot access the Ambassador portal.');
+    }
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -61,14 +68,14 @@ export default function LoginPage() {
         .eq('id', data.user.id)
         .single();
 
-      if (profile?.role === 'admin') {
-        window.location.href =
-          process.env.NEXT_PUBLIC_EMMYTECH_OS_URL ||
-          'http://localhost:3001/modules/marketing';
+      if (profile?.role !== 'ambassador') {
+        await supabase.auth.signOut();
+        setError('This login is only for ambassadors. Admin accounts cannot access the Ambassador portal.');
+        setLoading(false);
         return;
-      } else {
-        router.push('/dashboard');
       }
+
+      router.push('/dashboard');
 
       router.refresh();
     }

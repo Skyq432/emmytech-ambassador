@@ -30,6 +30,23 @@ export async function middleware(request: NextRequest) {
     if (!user) {
       return NextResponse.redirect(new URL('/auth/login', request.url));
     }
+
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profile?.role !== 'ambassador') {
+      await supabase.auth.signOut();
+      const loginUrl = new URL('/auth/login', request.url);
+      loginUrl.searchParams.set('error', 'ambassador-only');
+      const redirectResponse = NextResponse.redirect(loginUrl);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie);
+      });
+      return redirectResponse;
+    }
   }
 
   // If an unauthenticated user visits the root path, send them to login

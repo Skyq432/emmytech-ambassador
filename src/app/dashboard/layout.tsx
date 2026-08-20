@@ -28,10 +28,7 @@ export default async function DashboardLayout({
   const role = profile?.role || 'ambassador';
 
   if (role !== 'ambassador') {
-    redirect(
-      process.env.NEXT_PUBLIC_EMMYTECH_OS_URL ||
-        'http://localhost:3001/modules/marketing'
-    );
+    redirect('/auth/login?error=ambassador-only');
   }
 
   if (role === 'ambassador') {
