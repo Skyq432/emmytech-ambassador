@@ -62,7 +62,10 @@ export default function LoginPage() {
         .single();
 
       if (profile?.role === 'admin') {
-        router.push('/admin');
+        window.location.href =
+          process.env.NEXT_PUBLIC_EMMYTECH_OS_URL ||
+          'http://localhost:3001/modules/marketing';
+        return;
       } else {
         router.push('/dashboard');
       }

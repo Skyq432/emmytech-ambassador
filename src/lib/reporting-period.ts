@@ -4,7 +4,9 @@ export type ReportingPreset =
   | 'this_month'
   | 'last_month'
   | 'last_30_days'
+  | 'selected_month'
   | 'this_year'
+  | 'all_time'
   | 'custom';
 
 export interface ReportingRange {
@@ -28,7 +30,9 @@ export const reportingPresetOptions: Array<{
   { value: 'this_month', label: 'This month' },
   { value: 'last_month', label: 'Last month' },
   { value: 'last_30_days', label: 'Last 30 days' },
+  { value: 'selected_month', label: 'Select month' },
   { value: 'this_year', label: 'This year' },
+  { value: 'all_time', label: 'All time' },
   { value: 'custom', label: 'Custom range' },
 ];
 
@@ -144,6 +148,26 @@ export function getReportingRange(
       `${year}-01-01`,
       `${year}-12-31`,
       'This year'
+    );
+  }
+
+  if (preset === 'selected_month') {
+    const selectedMonth = customStart?.slice(0, 7) || today.slice(0, 7);
+    const [selectedYear, selectedMonthNumber] = selectedMonth.split('-').map(Number);
+    const startDate = `${selectedMonth}-01`;
+    const endDate = formatDateOnly(
+      dateFromParts(selectedYear, selectedMonthNumber + 1, 0)
+    );
+
+    return toRange('selected_month', startDate, endDate, 'Selected month');
+  }
+
+  if (preset === 'all_time') {
+    return toRange(
+      'all_time',
+      '2000-01-01',
+      '9999-12-31',
+      'All time'
     );
   }
 

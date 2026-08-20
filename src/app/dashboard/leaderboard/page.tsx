@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Trophy, Medal, Award, Users, TrendingUp } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
+import { ReportingPeriodPanel } from '@/components/reporting/reporting-period-panel';
 
 interface LeaderboardEntry {
   rank: number;
@@ -13,6 +14,14 @@ interface LeaderboardEntry {
   full_name: string;
   total_leads: number;
   total_conversions: number;
+}
+
+interface LeaderboardRpcRow {
+  rank: number | string;
+  ambassador_id: string;
+  full_name: string;
+  total_conversions: number | string;
+  total_leads: number | string;
 }
 
 export default function LeaderboardPage() {
@@ -25,85 +34,25 @@ export default function LeaderboardPage() {
     async function fetchLeaderboard() {
       const supabase = createClient();
 
-      const [ambassadorsResponse, leadsResponse, conversionsResponse] =
-        await Promise.all([
-          supabase
-            .from('ambassadors')
-            .select(
-              `
-                id,
-                ambassador_tag,
-                status,
-                users(name)
-              `
-            )
-            .eq('status', 'active'),
-          supabase
-            .from('leads')
-            .select('ambassador_id')
-            .eq('approved_as_lead', true)
-            .is('merged_into_lead_id', null)
-            .gte('created_at', range.startIso)
-            .lt('created_at', range.endExclusiveIso),
-          supabase
-            .from('conversions')
-            .select('ambassador_id')
-            .gte('approved_at', range.startIso)
-            .lt('approved_at', range.endExclusiveIso),
-        ]);
+      const { data, error } = await supabase.rpc('get_ambassador_leaderboard', {
+        p_start_at: range.startIso,
+        p_end_at: range.endExclusiveIso,
+      });
 
-      const firstError =
-        ambassadorsResponse.error ||
-        leadsResponse.error ||
-        conversionsResponse.error;
-
-      if (firstError) {
-        console.error('Error loading leaderboard:', firstError);
+      if (error) {
+        console.error('Error loading leaderboard:', error);
         setEntries([]);
         setLoading(false);
         return;
       }
 
-      const leadCounts = new Map<string, number>();
-      for (const lead of leadsResponse.data || []) {
-        if (!lead.ambassador_id) continue;
-        leadCounts.set(
-          lead.ambassador_id,
-          (leadCounts.get(lead.ambassador_id) || 0) + 1
-        );
-      }
-
-      const conversionCounts = new Map<string, number>();
-      for (const conversion of conversionsResponse.data || []) {
-        if (!conversion.ambassador_id) continue;
-        conversionCounts.set(
-          conversion.ambassador_id,
-          (conversionCounts.get(conversion.ambassador_id) || 0) + 1
-        );
-      }
-
-      const ranked = (ambassadorsResponse.data || [])
-        .map((entry: any) => ({
-          rank: 0,
-          id: entry.id,
-          full_name:
-            entry.users?.name || entry.ambassador_tag || 'Ambassador',
-          total_leads: leadCounts.get(entry.id) || 0,
-          total_conversions: conversionCounts.get(entry.id) || 0,
-        }))
-        .filter(
-          (entry) =>
-            entry.total_leads > 0 || entry.total_conversions > 0
-        )
-        .sort(
-          (a, b) =>
-            b.total_leads - a.total_leads ||
-            b.total_conversions - a.total_conversions
-        )
-        .map((entry, index) => ({
-          ...entry,
-          rank: index + 1,
-        }));
+      const ranked = ((data || []) as LeaderboardRpcRow[]).map((entry) => ({
+        rank: Number(entry.rank),
+        id: entry.ambassador_id,
+        full_name: entry.full_name,
+        total_conversions: Number(entry.total_conversions),
+        total_leads: Number(entry.total_leads),
+      }));
 
       setEntries(ranked);
       setLoading(false);
@@ -126,12 +75,13 @@ export default function LeaderboardPage() {
 
   return (
     <div className="space-y-6">
+      <ReportingPeriodPanel audience="ambassador" />
       <div>
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
           Leaderboard
         </h1>
         <p className="mt-1 text-sm text-slate-500 sm:text-base">
-          Ambassador ranking by leads first, then conversions for the selected period.
+          Ambassador ranking by conversions first, then approved leads for the selected period.
         </p>
       </div>
 
@@ -204,10 +154,10 @@ function TopRankCard({ entry }: { entry: LeaderboardEntry }) {
 
           <div className="text-right sm:text-center">
             <p className="text-xl font-bold text-emmy-primary">
-              {formatNumber(entry.total_leads)}
+              {formatNumber(entry.total_conversions)}
             </p>
             <p className="text-xs text-slate-500">
-              leads · {formatNumber(entry.total_conversions)} conversions
+              conversions · {formatNumber(entry.total_leads)} leads
             </p>
           </div>
         </div>

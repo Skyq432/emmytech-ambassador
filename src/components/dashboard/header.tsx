@@ -19,15 +19,6 @@ const pageMeta: Record<string, { title: string; eyebrow: string }> = {
   '/dashboard/payouts': { title: 'Payouts', eyebrow: 'Earnings history' },
   '/dashboard/payout-account': { title: 'Payout Account', eyebrow: 'Payment details' },
   '/dashboard/settings': { title: 'Settings', eyebrow: 'Account preferences' },
-  '/admin': { title: 'Command Centre', eyebrow: 'Admin workspace' },
-  '/admin/ambassadors': { title: 'Ambassadors', eyebrow: 'People and performance' },
-  '/admin/activities': { title: 'Activity Reviews', eyebrow: 'Approvals queue' },
-  '/admin/leads': { title: 'Lead Management', eyebrow: 'Pipeline operations' },
-  '/admin/whatsapp-intake': { title: 'WhatsApp Intake', eyebrow: 'Identity workspace' },
-  '/admin/conversions': { title: 'Conversions', eyebrow: 'Sales and commission' },
-  '/admin/products': { title: 'Products', eyebrow: 'Catalogue management' },
-  '/admin/invite': { title: 'Invitations', eyebrow: 'Ambassador onboarding' },
-  '/admin/settings': { title: 'Platform Settings', eyebrow: 'System controls' },
 };
 
 export function DashboardHeader({ user, profile }: DashboardHeaderProps) {
@@ -36,18 +27,10 @@ export function DashboardHeader({ user, profile }: DashboardHeaderProps) {
 
   const meta = useMemo(() => {
     if (pageMeta[pathname]) return pageMeta[pathname];
-    if (pathname.startsWith('/admin/ambassadors/')) {
-      return { title: 'Ambassador Profile', eyebrow: 'People and performance' };
-    }
-    if (pathname.startsWith('/admin/leads/')) {
-      return { title: 'Unified Lead Timeline', eyebrow: 'Identity and customer journey' };
-    }
     if (pathname.startsWith('/dashboard/leads/')) {
       return { title: 'Lead Timeline', eyebrow: 'Referral customer journey' };
     }
-    return currentUser?.role === 'admin'
-      ? { title: 'Admin Workspace', eyebrow: 'EmmyTech operations' }
-      : { title: 'Ambassador Workspace', eyebrow: 'EmmyTech growth programme' };
+    return { title: 'Ambassador Workspace', eyebrow: 'EmmyTech growth programme' };
   }, [pathname, currentUser?.role]);
 
   const displayName =

@@ -42,6 +42,22 @@ interface AmbassadorData {
   status: string;
 }
 
+interface DashboardLeaderboardEntry {
+  rank: number;
+  id: string;
+  fullName: string;
+  conversions: number;
+  leads: number;
+}
+
+interface LeaderboardRpcRow {
+  rank: number | string;
+  ambassador_id: string;
+  full_name: string;
+  total_conversions: number | string;
+  total_leads: number | string;
+}
+
 export default function AmbassadorDashboard() {
   const [copied, setCopied] = useState<string | null>(null);
   const [ambassador, setAmbassador] = useState<AmbassadorData | null>(null);
@@ -64,6 +80,7 @@ export default function AmbassadorDashboard() {
 
   const [periodConversions, setPeriodConversions] = useState(0);
   const [periodPaid, setPeriodPaid] = useState(0);
+  const [leaderboardEntries, setLeaderboardEntries] = useState<DashboardLeaderboardEntry[]>([]);
   const { range } = useReportingPeriod();
 
   useEffect(() => {
@@ -119,6 +136,7 @@ export default function AmbassadorDashboard() {
             whatsappLeadsResponse,
             spinClicksResponse,
             spinLeadsResponse,
+            leaderboardResponse,
           ] = await Promise.all([
             supabase
               .from('leads')
@@ -170,6 +188,10 @@ export default function AmbassadorDashboard() {
               .eq('credited_as_lead', true)
               .gte('qualified_at', range.startIso)
               .lt('qualified_at', range.endExclusiveIso),
+            supabase.rpc('get_ambassador_leaderboard', {
+              p_start_at: range.startIso,
+              p_end_at: range.endExclusiveIso,
+            }),
           ]);
 
           const responses = [
@@ -180,6 +202,7 @@ export default function AmbassadorDashboard() {
             whatsappLeadsResponse,
             spinClicksResponse,
             spinLeadsResponse,
+            leaderboardResponse,
           ];
 
           const firstError = responses.find((response) => response.error)?.error;
@@ -187,6 +210,19 @@ export default function AmbassadorDashboard() {
 
           setActualLeads(leadsResponse.count || 0);
           setPeriodConversions(conversionsResponse.count || 0);
+          const rankedEntries = ((leaderboardResponse.data || []) as LeaderboardRpcRow[]).map((entry) => ({
+              rank: Number(entry.rank),
+              id: entry.ambassador_id,
+              fullName: entry.full_name,
+              conversions: Number(entry.total_conversions),
+              leads: Number(entry.total_leads),
+            }));
+          const previewEntries = rankedEntries.slice(0, 5);
+          const currentEntry = rankedEntries.find((entry) => entry.id === ambData.id);
+          if (currentEntry && !previewEntries.some((entry) => entry.id === currentEntry.id)) {
+            previewEntries.push(currentEntry);
+          }
+          setLeaderboardEntries(previewEntries);
           setPeriodPaid(
             (payoutsResponse.data || []).reduce(
               (total, payout) => total + Number(payout.amount || 0),
@@ -273,7 +309,7 @@ export default function AmbassadorDashboard() {
 
   const stats = [
     {
-      label: 'Total Leads',
+      label: `Leads · ${range.label}`,
       value: actualLeads.toLocaleString(),
       detail: 'People referred',
       icon: Users,
@@ -623,6 +659,82 @@ export default function AmbassadorDashboard() {
           );
         })}
       </section>
+
+      <Card>
+        <CardContent className="p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-amber-500" />
+                <h3 className="font-semibold text-slate-950">Ambassador leaderboard</h3>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                {range.label}: conversions rank first, then approved leads break a tie.
+              </p>
+            </div>
+            <Link href="/dashboard/leaderboard">
+              <Button variant="outline" size="sm">
+                View all
+                <ArrowRight className="ml-1.5 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+
+          {leaderboardEntries.length === 0 ? (
+            <div className="mt-5 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+              No approved conversions or leads in this period yet.
+            </div>
+          ) : (
+            <div className="mt-5 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
+              {leaderboardEntries.map((entry, index) => {
+                const isCurrentAmbassador = entry.id === ambassador.id;
+                const separatedCurrentEntry = index === 5;
+
+                return (
+                  <div key={entry.id}>
+                    {separatedCurrentEntry && (
+                      <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        Your position
+                      </div>
+                    )}
+                    <div
+                      className={`flex items-center justify-between gap-4 px-4 py-3.5 ${
+                        isCurrentAmbassador ? 'bg-blue-50/70' : 'bg-white'
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold ${
+                          entry.rank === 1
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          #{entry.rank}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">
+                            {entry.fullName}{isCurrentAmbassador ? ' (You)' : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid shrink-0 grid-cols-2 gap-4 text-right sm:gap-8">
+                        <div>
+                          <p className="text-base font-bold text-emerald-600">{entry.conversions}</p>
+                          <p className="text-[10px] text-slate-400">conversions</p>
+                        </div>
+                        <div>
+                          <p className="text-base font-bold text-emmy-primary">{entry.leads}</p>
+                          <p className="text-[10px] text-slate-400">leads</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <section className="grid gap-4 lg:grid-cols-[1fr_0.72fr]">
         <Card>

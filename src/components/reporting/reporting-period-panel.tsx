@@ -44,6 +44,7 @@ const helpContent: Record<
       'WhatsApp referral clicks and credited leads',
       'Spin Wheel referral clicks and qualified leads',
       'Paid payouts recorded in the selected period',
+      'Bonuses, commissions and other dated performance activity',
       'My Leads, My Activity, Payout History and Leaderboard reports',
     ],
     doesNotAffect: [
@@ -60,7 +61,7 @@ export function ReportingPeriodPanel({
 }: {
   audience: ReportingAudience;
 }) {
-  const { range, setPreset, setCustomRange } = useReportingPeriod();
+  const { range, setPreset, setCustomRange, setSelectedMonth } = useReportingPeriod();
   const [helpOpen, setHelpOpen] = useState(false);
   const content = helpContent[audience];
 
@@ -127,6 +128,21 @@ export function ReportingPeriodPanel({
               </option>
             ))}
           </select>
+
+          {range.preset === 'selected_month' && (
+            <>
+              <label className="sr-only" htmlFor={`${audience}-reporting-month`}>
+                Select reporting month
+              </label>
+              <input
+                id={`${audience}-reporting-month`}
+                type="month"
+                value={range.startDate.slice(0, 7)}
+                onChange={(event) => setSelectedMonth(event.target.value)}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-emmy-primary focus:ring-4 focus:ring-blue-100"
+              />
+            </>
+          )}
 
           {range.preset === 'custom' && (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

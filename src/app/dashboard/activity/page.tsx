@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
+import { ReportingPeriodPanel } from '@/components/reporting/reporting-period-panel';
 
 type BadgeVariant =
   | 'default'
@@ -183,6 +184,7 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-6">
+      <ReportingPeriodPanel audience="ambassador" />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">

@@ -6,20 +6,14 @@ import { createClient } from '@/lib/supabase';
 import Link from 'next/link';
 import {
   Activity,
-  BarChart3,
   ChevronLeft,
   ChevronRight,
-  CircleGauge,
   CreditCard,
   LayoutDashboard,
-  Link2,
   LogOut,
   Menu,
   MessageCircle,
-  MessageSquareText,
-  Package,
   Settings,
-  Shield,
   Trophy,
   Users,
   WalletCards,
@@ -33,19 +27,6 @@ interface NavItem {
   icon: LucideIcon;
   group: 'workspace' | 'manage' | 'account';
 }
-
-const adminNav: NavItem[] = [
-  { label: 'Overview', href: '/admin', icon: LayoutDashboard, group: 'workspace' },
-  { label: 'Spin Wheel Admin', href: '/admin/spin-wheel', icon: CircleGauge, group: 'workspace' },
-  { label: 'Ambassadors', href: '/admin/ambassadors', icon: Users, group: 'manage' },
-  { label: 'Activities', href: '/admin/activities', icon: Activity, group: 'manage' },
-  { label: 'Leads', href: '/admin/leads', icon: MessageCircle, group: 'manage' },
-  { label: 'WhatsApp Intake', href: '/admin/whatsapp-intake', icon: MessageSquareText, group: 'manage' },
-  { label: 'Conversions', href: '/admin/conversions', icon: BarChart3, group: 'manage' },
-  { label: 'Products', href: '/admin/products', icon: Package, group: 'manage' },
-  { label: 'Invite', href: '/admin/invite', icon: Link2, group: 'account' },
-  { label: 'Settings', href: '/admin/settings', icon: Settings, group: 'account' },
-];
 
 const ambassadorNav: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, group: 'workspace' },
@@ -70,8 +51,7 @@ export function DashboardSidebar({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const navItems = role === 'admin' ? adminNav : ambassadorNav;
-  const isAdmin = role === 'admin';
+  const navItems = ambassadorNav;
 
   useEffect(() => {
     const saved = window.localStorage.getItem('emmytech-ambassador-sidebar');
@@ -108,7 +88,7 @@ export function DashboardSidebar({
 
   function isActive(href: string): boolean {
     if (pathname === href) return true;
-    if (href !== '/admin' && href !== '/dashboard') {
+    if (href !== '/dashboard') {
       return pathname.startsWith(`${href}/`);
     }
     return false;
@@ -159,8 +139,8 @@ export function DashboardSidebar({
         {(!collapsed || isMobile) && (
           <div className="px-4 pb-2">
             <div className="flex items-center gap-2 rounded-xl bg-white/[0.08] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-100/[0.85]">
-              {isAdmin ? <Shield className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
-              {isAdmin ? 'Admin workspace' : 'Ambassador workspace'}
+              <Users className="h-3.5 w-3.5" />
+              Ambassador workspace
             </div>
           </div>
         )}

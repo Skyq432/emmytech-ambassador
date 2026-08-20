@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { DollarSign, TrendingUp, Wallet } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useReportingPeriod } from '@/components/reporting/reporting-period-context';
+import { ReportingPeriodPanel } from '@/components/reporting/reporting-period-panel';
 
 interface Payout {
   id: string;
@@ -26,6 +27,7 @@ interface AmbassadorStats {
 
 export default function AmbassadorPayoutsPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [paidInPeriod, setPaidInPeriod] = useState<Payout[]>([]);
   const [stats, setStats] = useState<AmbassadorStats | null>(null);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
@@ -50,16 +52,30 @@ export default function AmbassadorPayoutsPage() {
 
       if (ambData) setStats(ambData);
 
-      // Get payouts using the ambassador id
-      const { data: payData } = await supabase
-        .from('payouts')
-        .select('*')
-        .eq('ambassador_id', ambData?.id)
-        .gte('created_at', range.startIso)
-        .lt('created_at', range.endExclusiveIso)
-        .order('created_at', { ascending: false });
+      // Requested/pending payouts belong to the period when created. Paid
+      // performance belongs to the period when payment actually completed.
+      const [historyResult, paidResult] = await Promise.all([
+        supabase
+          .from('payouts')
+          .select('*')
+          .eq('ambassador_id', ambData?.id)
+          .gte('created_at', range.startIso)
+          .lt('created_at', range.endExclusiveIso)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('payouts')
+          .select('*')
+          .eq('ambassador_id', ambData?.id)
+          .eq('status', 'paid')
+          .gte('paid_at', range.startIso)
+          .lt('paid_at', range.endExclusiveIso),
+      ]);
 
-      setPayouts(payData || []);
+      if (historyResult.error) throw historyResult.error;
+      if (paidResult.error) throw paidResult.error;
+
+      setPayouts(historyResult.data || []);
+      setPaidInPeriod(paidResult.data || []);
     } catch (err) {
       console.error('Error fetching payouts:', err);
     } finally {
@@ -67,12 +83,10 @@ export default function AmbassadorPayoutsPage() {
     }
   };
 
-  const periodCashedOut = payouts
-    .filter((payout) => payout.status === 'paid')
+  const periodCashedOut = paidInPeriod
     .reduce((total, payout) => total + Number(payout.amount || 0), 0);
 
-  const periodPointsPaid = payouts
-    .filter((payout) => payout.status === 'paid')
+  const periodPointsPaid = paidInPeriod
     .reduce((total, payout) => total + Number(payout.points_paid || 0), 0);
 
   if (loading) {
@@ -85,6 +99,7 @@ export default function AmbassadorPayoutsPage() {
 
   return (
     <div className="space-y-6">
+      <ReportingPeriodPanel audience="ambassador" />
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Payouts</h1>
         <p className="text-muted-foreground">Track your earnings and payout history</p>
@@ -99,7 +114,7 @@ export default function AmbassadorPayoutsPage() {
                 <Wallet className="h-5 w-5 text-emmy-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Available Balance</p>
+                <p className="text-sm text-muted-foreground">Current Available Balance</p>
                 <p className="text-2xl font-bold">{formatCurrency(stats?.available_balance || 0)}</p>
               </div>
             </div>
@@ -112,7 +127,7 @@ export default function AmbassadorPayoutsPage() {
                 <DollarSign className="h-5 w-5 text-emmy-secondary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Cashed Out in Period</p>
+                <p className="text-sm text-muted-foreground">Paid · {range.label}</p>
                 <p className="text-2xl font-bold">{formatCurrency(periodCashedOut)}</p>
               </div>
             </div>
@@ -125,7 +140,7 @@ export default function AmbassadorPayoutsPage() {
                 <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Points Paid in Period</p>
+                <p className="text-sm text-muted-foreground">Points Paid · {range.label}</p>
                 <p className="text-2xl font-bold">{periodPointsPaid}</p>
               </div>
             </div>
@@ -136,7 +151,7 @@ export default function AmbassadorPayoutsPage() {
       {/* Payout History */}
       <Card>
         <CardHeader>
-          <CardTitle>Payout History</CardTitle>
+          <CardTitle>Payout History · {range.label}</CardTitle>
         </CardHeader>
         <CardContent>
           {payouts.length === 0 ? (

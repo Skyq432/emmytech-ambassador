@@ -594,8 +594,8 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <Badge variant={user?.role === 'admin' ? 'default' : 'secondary'}>
-              {user?.role || 'unknown'}
+            <Badge variant="secondary">
+              ambassador
             </Badge>
 
             <span className="text-sm text-muted-foreground">

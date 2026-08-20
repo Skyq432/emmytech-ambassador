@@ -10,6 +10,7 @@ import {
 } from 'react';
 import {
   getReportingRange,
+  nigeriaToday,
   type ReportingPreset,
   type ReportingRange,
 } from '@/lib/reporting-period';
@@ -24,6 +25,7 @@ interface ReportingPeriodContextValue {
   range: ReportingRange;
   setPreset: (preset: ReportingPreset) => void;
   setCustomRange: (startDate: string, endDate: string) => void;
+  setSelectedMonth: (month: string) => void;
 }
 
 const STORAGE_KEY = 'emmytech-reporting-period-v1';
@@ -70,6 +72,14 @@ export function ReportingPeriodProvider({
     () => ({
       range,
       setPreset(preset) {
+        if (preset === 'selected_month') {
+          setSelection({
+            preset,
+            startDate: `${nigeriaToday().slice(0, 7)}-01`,
+          });
+          return;
+        }
+
         if (preset === 'custom') {
           setSelection({
             preset,
@@ -86,6 +96,12 @@ export function ReportingPeriodProvider({
           preset: 'custom',
           startDate,
           endDate,
+        });
+      },
+      setSelectedMonth(month) {
+        setSelection({
+          preset: 'selected_month',
+          startDate: `${month}-01`,
         });
       },
     }),
