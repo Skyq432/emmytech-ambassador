@@ -8,7 +8,8 @@
     "build:cloudflare": "npx opennextjs-cloudflare build && node -e \"const fs = require('fs'); fs.copyFileSync('.open-next/worker.js', '.open-next/_worker.js');\"",
     "deploy:cloudflare": "npm run build:cloudflare && npx opennextjs-cloudflare deploy",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:funnel": "node --experimental-strip-types --test src/lib/funnel/funnel.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
