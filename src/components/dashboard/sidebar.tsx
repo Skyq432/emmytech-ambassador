@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
+  Filter,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -31,6 +32,7 @@ interface NavItem {
 const ambassadorNav: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, group: 'workspace' },
   { label: 'My Leads', href: '/dashboard/leads', icon: MessageCircle, group: 'workspace' },
+  { label: 'My Funnel', href: '/dashboard/funnel', icon: Filter, group: 'workspace' },
   { label: 'Activity', href: '/dashboard/activity', icon: Activity, group: 'workspace' },
   { label: 'Leaderboard', href: '/dashboard/leaderboard', icon: Trophy, group: 'manage' },
   { label: 'Payouts', href: '/dashboard/payouts', icon: WalletCards, group: 'manage' },
