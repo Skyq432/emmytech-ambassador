@@ -12,7 +12,6 @@ import {
   Copy,
   CreditCard,
   ExternalLink,
-  Link2,
   MessageCircle,
   MousePointerClick,
   Plus,
@@ -63,16 +62,8 @@ export default function AmbassadorDashboard() {
   const [ambassador, setAmbassador] = useState<AmbassadorData | null>(null);
   const [actualLeads, setActualLeads] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [referralLink, setReferralLink] = useState('');
   const [spinLink, setSpinLink] = useState('');
-  const [expandedLinks, setExpandedLinks] = useState({
-    whatsapp: false,
-    spin: false,
-  });
-  const [whatsappStats, setWhatsappStats] = useState({
-    clicks: 0,
-    leads: 0,
-  });
+  const [spinLinkExpanded, setSpinLinkExpanded] = useState(false);
   const [spinStats, setSpinStats] = useState({
     clicks: 0,
     leads: 0,
@@ -113,7 +104,6 @@ export default function AmbassadorDashboard() {
             formattedAmbassador.referral_code;
 
           setAmbassador(formattedAmbassador);
-          setReferralLink(`https://ambassador.emmytechnology.com/r/${code}`);
 
           const configuredSpinOrigin =
             process.env.NEXT_PUBLIC_SPIN_WHEEL_URL?.replace(/\/$/, '');
@@ -132,8 +122,6 @@ export default function AmbassadorDashboard() {
             leadsResponse,
             conversionsResponse,
             payoutsResponse,
-            whatsappClicksResponse,
-            whatsappLeadsResponse,
             spinClicksResponse,
             spinLeadsResponse,
             leaderboardResponse,
@@ -163,21 +151,6 @@ export default function AmbassadorDashboard() {
               .from('referral_clicks')
               .select('*', { count: 'exact', head: true })
               .eq('ambassador_id', ambData.id)
-              .eq('source', 'whatsapp')
-              .gte('created_at', range.startIso)
-              .lt('created_at', range.endExclusiveIso),
-            supabase
-              .from('referral_clicks')
-              .select('lead_id')
-              .eq('ambassador_id', ambData.id)
-              .eq('source', 'whatsapp')
-              .eq('counted_as_lead', true)
-              .gte('created_at', range.startIso)
-              .lt('created_at', range.endExclusiveIso),
-            supabase
-              .from('referral_clicks')
-              .select('*', { count: 'exact', head: true })
-              .eq('ambassador_id', ambData.id)
               .eq('source', 'spin_wheel')
               .gte('created_at', range.startIso)
               .lt('created_at', range.endExclusiveIso),
@@ -198,8 +171,6 @@ export default function AmbassadorDashboard() {
             leadsResponse,
             conversionsResponse,
             payoutsResponse,
-            whatsappClicksResponse,
-            whatsappLeadsResponse,
             spinClicksResponse,
             spinLeadsResponse,
             leaderboardResponse,
@@ -229,20 +200,6 @@ export default function AmbassadorDashboard() {
               0
             )
           );
-
-          const linkedLeadIds = new Set(
-            (whatsappLeadsResponse.data || [])
-              .map((row) => row.lead_id)
-              .filter((leadId): leadId is string => Boolean(leadId))
-          );
-          const unlinkedLeadRows = (whatsappLeadsResponse.data || []).filter(
-            (row) => !row.lead_id
-          ).length;
-
-          setWhatsappStats({
-            clicks: whatsappClicksResponse.count || 0,
-            leads: linkedLeadIds.size + unlinkedLeadRows,
-          });
 
           setSpinStats({
             clicks: spinClicksResponse.count || 0,
@@ -275,11 +232,8 @@ export default function AmbassadorDashboard() {
     window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
   }
 
-  function toggleLinkPanel(panel: 'whatsapp' | 'spin') {
-    setExpandedLinks((current) => ({
-      ...current,
-      [panel]: !current[panel],
-    }));
+  function toggleSpinLinkPanel() {
+    setSpinLinkExpanded((current) => !current);
   }
 
   if (loading) {
@@ -405,106 +359,19 @@ export default function AmbassadorDashboard() {
               </div>
 
               <h3 className="mt-3 max-w-xl text-2xl font-bold tracking-[-0.03em] sm:text-[28px]">
-                Your referral links, clicks and leads in one place.
+                Your referral link, clicks and leads in one place.
               </h3>
               <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100/[0.80]">
-                Open either card to copy the link, share it and check its separate click and lead counts. One person is counted as one lead even when they use both links.
+                Open the card to copy the link, share it and check its click and lead counts. Every referral now goes through the Spin Wheel, which always captures a name, phone number and email before a reward is claimed.
               </p>
 
               <div className="mt-6 grid gap-3">
                 <div className="overflow-hidden rounded-2xl border border-white/[0.12] bg-white/10 backdrop-blur-sm">
                   <button
                     type="button"
-                    onClick={() => toggleLinkPanel('whatsapp')}
+                    onClick={toggleSpinLinkPanel}
                     className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-white/[0.06]"
-                    aria-expanded={expandedLinks.whatsapp}
-                    aria-controls="whatsapp-referral-panel"
-                  >
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 text-blue-100">
-                      <Link2 className="h-5 w-5" />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-100/70">
-                        WhatsApp referral link
-                      </p>
-                      <p className="mt-1 text-xs text-blue-100/65">
-                        {whatsappStats.clicks.toLocaleString()} clicks · {whatsappStats.leads.toLocaleString()} leads
-                      </p>
-                    </div>
-
-                    <div className="hidden items-center gap-2 sm:flex">
-                      <span className="rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white">
-                        {whatsappStats.clicks.toLocaleString()} clicks
-                      </span>
-                      <span className="rounded-lg border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white">
-                        {whatsappStats.leads.toLocaleString()} leads
-                      </span>
-                    </div>
-
-                    <ChevronDown
-                      className={`h-5 w-5 shrink-0 text-blue-100 transition-transform ${
-                        expandedLinks.whatsapp ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
-
-                  {expandedLinks.whatsapp && (
-                    <div
-                      id="whatsapp-referral-panel"
-                      className="border-t border-white/10 px-4 pb-4 pt-3"
-                    >
-                      <p className="break-all text-sm font-medium text-white">
-                        {referralLink}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-blue-100/65">
-                        Share this link to open an attributed WhatsApp conversation with EmmyTech.
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(referralLink, 'whatsapp-link')}
-                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-emmy-primary transition hover:bg-blue-50"
-                        >
-                          {copied === 'whatsapp-link' ? (
-                            <Check className="h-4 w-4" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                          {copied === 'whatsapp-link' ? 'Copied' : 'Copy link'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            shareOnWhatsApp(
-                              referralLink,
-                              'Message EmmyTech through my personal Ambassador link'
-                            )
-                          }
-                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/[0.15]"
-                        >
-                          <Share2 className="h-4 w-4" />
-                          Share
-                        </button>
-                        <Link
-                          href="/dashboard/leads"
-                          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-white transition hover:bg-white/[0.15]"
-                        >
-                          <Users className="h-4 w-4" />
-                          View leads
-                        </Link>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="overflow-hidden rounded-2xl border border-white/[0.12] bg-white/10 backdrop-blur-sm">
-                  <button
-                    type="button"
-                    onClick={() => toggleLinkPanel('spin')}
-                    className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-white/[0.06]"
-                    aria-expanded={expandedLinks.spin}
+                    aria-expanded={spinLinkExpanded}
                     aria-controls="spin-wheel-panel"
                   >
                     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 text-blue-100">
@@ -531,12 +398,12 @@ export default function AmbassadorDashboard() {
 
                     <ChevronDown
                       className={`h-5 w-5 shrink-0 text-blue-100 transition-transform ${
-                        expandedLinks.spin ? 'rotate-180' : ''
+                        spinLinkExpanded ? 'rotate-180' : ''
                       }`}
                     />
                   </button>
 
-                  {expandedLinks.spin && (
+                  {spinLinkExpanded && (
                     <div
                       id="spin-wheel-panel"
                       className="border-t border-white/10 px-4 pb-4 pt-3"
